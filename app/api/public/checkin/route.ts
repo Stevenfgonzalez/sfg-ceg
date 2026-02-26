@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createBrowserClient } from '@/lib/supabase';
 import { hashPhone, phoneLast4 } from '@/lib/phone';
 
+const VALID_STATUSES = [
+  'SAFE',
+  'EVACUATING',
+  'AT_MUSTER',
+  'SHELTERING_HERE',
+  'NEED_HELP',
+  'NEED_MEDICAL',
+  'LOOKING_FOR_SOMEONE',
+  // Backward compat with Phase 1 codes
+  'SIP',
+  'NEED_EMS',
+];
+
 // POST /api/public/checkin
 // Public QR check-in — uses ANON key, RLS enforces insert-only + active incident
 // Phone is hashed server-side before touching the database
@@ -25,10 +38,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Full name is required' }, { status: 400 });
   }
 
-  const validStatuses = ['SAFE', 'SIP', 'NEED_EMS'];
-  if (!status || !validStatuses.includes(status)) {
+  if (!status || !VALID_STATUSES.includes(status)) {
     return NextResponse.json(
-      { error: 'Status must be SAFE, SIP, or NEED_EMS' },
+      { error: `Status must be one of: ${VALID_STATUSES.join(', ')}` },
       { status: 400 }
     );
   }
@@ -39,9 +51,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Anon key client — RLS enforces:
-    //   - INSERT only (no select/update/delete)
-    //   - incident must be active (with check subquery)
     const supabase = createBrowserClient();
 
     // Build insert row — hash phone, never store raw
@@ -51,7 +60,8 @@ export async function POST(request: NextRequest) {
       status,
       assembly_point: body.assembly_point ?? null,
       zone: body.zone ?? null,
-      party_size: body.party_size ?? 1,
+      party_size: typeof body.party_size === 'number' ? Math.max(1, Math.min(50, body.party_size)) : 1,
+      pet_count: typeof body.pet_count === 'number' ? Math.max(0, Math.min(20, body.pet_count)) : 0,
       has_dependents: body.has_dependents ?? false,
       dependent_names: body.dependent_names ?? null,
       needs_transport: body.needs_transport ?? false,
@@ -59,7 +69,14 @@ export async function POST(request: NextRequest) {
       department: body.department ?? null,
       role: body.role ?? null,
       notes: body.notes ?? null,
+      contact_name: typeof body.contact_name === 'string' ? body.contact_name.trim() || null : null,
     };
+
+    // GPS location
+    if (typeof body.lat === 'number' && typeof body.lon === 'number') {
+      row.lat = body.lat;
+      row.lon = body.lon;
+    }
 
     // Phone hashing — raw phone NEVER touches the database
     if (phone && typeof phone === 'string' && phone.replace(/\D/g, '').length >= 10) {
@@ -70,7 +87,6 @@ export async function POST(request: NextRequest) {
     const { error } = await supabase.from('checkins').insert(row);
 
     if (error) {
-      // RLS will reject if incident is not active
       if (error.code === '42501' || error.message.includes('policy')) {
         return NextResponse.json(
           { error: 'This incident is not currently active' },

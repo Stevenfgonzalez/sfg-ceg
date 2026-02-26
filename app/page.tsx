@@ -107,6 +107,31 @@ export default function CEGDashboard() {
               <p className="text-sm text-amber-200">EMS, stuck, or sheltering in place</p>
             </div>
           </button>
+
+          <a
+            href="/reunify"
+            className="w-full flex items-center gap-4 bg-purple-700 rounded-xl px-5 py-4 active:bg-purple-800 transition-colors border border-purple-600 text-left block"
+          >
+            <span className="text-3xl">👨‍👩‍👧‍👦</span>
+            <div>
+              <p className="font-bold text-lg">Find My Family</p>
+              <p className="text-sm text-purple-200">Search for a loved one&apos;s status</p>
+            </div>
+          </a>
+        </div>
+
+        {/* Life-Saving Skills */}
+        <div className="px-4 mb-6">
+          <a
+            href="/skills"
+            className="flex items-center gap-4 bg-slate-800 rounded-xl px-5 py-4 border border-slate-700 active:bg-slate-700 transition-colors"
+          >
+            <span className="text-3xl">🩺</span>
+            <div>
+              <p className="font-bold text-base">Life-Saving Skills</p>
+              <p className="text-sm text-slate-400">CPR, bleeding, AED, fire, evacuation</p>
+            </div>
+          </a>
         </div>
 
         {/* Resource Links */}
@@ -252,26 +277,26 @@ export default function CEGDashboard() {
       </a>
 
       <div className="px-4 py-4 space-y-3">
-        {/* EMS */}
+        {/* Medical / Triage */}
         <a
-          href="tel:911"
+          href="/help"
           className="flex items-center gap-4 bg-red-900/60 rounded-xl px-5 py-4 border border-red-700 active:bg-red-900 transition-colors"
         >
           <span className="text-3xl">🚑</span>
           <div>
-            <p className="font-bold text-lg">I Need EMS</p>
+            <p className="font-bold text-lg">Medical / Triage</p>
             <p className="text-sm text-red-200">
-              Medical emergency — calls 911 directly
+              Describe what&apos;s happening — the system will route you
             </p>
           </div>
         </a>
 
         {/* Stuck / Can't Evacuate */}
         <a
-          href="/checkin?status=NEED_EMS"
+          href="/stuck"
           className="flex items-center gap-4 bg-amber-900/60 rounded-xl px-5 py-4 border border-amber-700 active:bg-amber-900 transition-colors"
         >
-          <span className="text-3xl">🔶</span>
+          <span className="text-3xl">🚗</span>
           <div>
             <p className="font-bold text-lg">Stuck / Can&apos;t Evacuate</p>
             <p className="text-sm text-amber-200">
@@ -282,14 +307,14 @@ export default function CEGDashboard() {
 
         {/* Sheltering in Place */}
         <a
-          href="/checkin?status=SIP"
+          href="/shelter"
           className="flex items-center gap-4 bg-slate-800 rounded-xl px-5 py-4 border border-slate-600 active:bg-slate-700 transition-colors"
         >
           <span className="text-3xl">🏠</span>
           <div>
             <p className="font-bold text-lg">Sheltering in Place</p>
             <p className="text-sm text-slate-300">
-              Let responders know you are staying at your location
+              Share your location with responders
             </p>
           </div>
         </a>
