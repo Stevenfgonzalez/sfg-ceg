@@ -3,11 +3,16 @@ import { createServiceClient } from '@/lib/supabase';
 import { hashPhone } from '@/lib/phone';
 import { checkRateLimit } from '@/lib/rate-limit';
 
-// POST /api/reunification
-// Public reunification lookup — returns minimal status only
+// POST /api/public/reunification
+// Public reunification lookup — privacy proxy
+//
+// Uses service role server-side BY DESIGN because:
+//   - Anon cannot SELECT from checkins (RLS blocks it)
+//   - This route acts as the security boundary
+//   - Only returns 1 of 3 fixed messages, never raw data
+//   - Rate limited + audit logged
 //
 // Body: { phone: string, incident_id: string }
-// Returns: { status: "safe" | "not_found" | "reunification_notified" }
 export async function POST(request: NextRequest) {
   // Rate limit by IP
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
@@ -49,7 +54,8 @@ export async function POST(request: NextRequest) {
     const supabase = createServiceClient();
     const phoneHash = hashPhone(phone);
 
-    // Check if this phone has checked in for this incident
+    // Service role: bypasses RLS to read checkins (anon can't SELECT)
+    // Only fetches status column — nothing else leaves the server
     const { data, error } = await supabase
       .from('checkins')
       .select('status')
@@ -65,7 +71,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Log the lookup attempt (audit trail)
+    // Audit log
     await supabase.from('reunification_lookups').insert({
       incident_id,
       phone_hash: phoneHash,
@@ -74,7 +80,7 @@ export async function POST(request: NextRequest) {
       user_agent: request.headers.get('user-agent') ?? null,
     });
 
-    // Return minimal information — NEVER location, timestamp, or EMS flags
+    // Return ONLY one of 3 fixed messages — never location, timestamp, or EMS flags
     let result: { message: string; checked_in: boolean };
 
     if (!data) {
@@ -89,7 +95,6 @@ export async function POST(request: NextRequest) {
       };
     } else {
       // SIP or NEED_EMS — do NOT reveal medical status to public
-      // Use the same neutral message for both
       result = {
         message: 'This person has checked in. The reunification team has been notified.',
         checked_in: true,

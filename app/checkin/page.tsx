@@ -89,7 +89,7 @@ function CheckInForm() {
       if (status !== 'SAFE' && emsNotes.trim()) body.ems_notes = emsNotes.trim();
       if (notes.trim()) body.notes = notes.trim();
 
-      const res = await fetch('/api/checkin', {
+      const res = await fetch('/api/public/checkin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

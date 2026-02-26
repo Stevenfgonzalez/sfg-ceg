@@ -1,26 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase';
+import { createBrowserClient } from '@/lib/supabase';
 import { hashPhone, phoneLast4 } from '@/lib/phone';
 
-// POST /api/checkin
-// Public QR check-in — hashes phone server-side before storing
-//
-// Body: {
-//   incident_id: string,
-//   full_name: string,
-//   phone?: string,
-//   status: "SAFE" | "SIP" | "NEED_EMS",
-//   assembly_point?: string,
-//   zone?: string,
-//   party_size?: number,
-//   has_dependents?: boolean,
-//   dependent_names?: string[],
-//   needs_transport?: boolean,
-//   ems_notes?: string,
-//   department?: string,
-//   role?: string,
-//   notes?: string,
-// }
+// POST /api/public/checkin
+// Public QR check-in — uses ANON key, RLS enforces insert-only + active incident
+// Phone is hashed server-side before touching the database
 export async function POST(request: NextRequest) {
   let body: Record<string, unknown>;
   try {
@@ -55,21 +39,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const supabase = createServiceClient();
-
-    // Verify incident is active
-    const { data: incident } = await supabase
-      .from('incidents')
-      .select('status')
-      .eq('id', incident_id)
-      .single();
-
-    if (!incident || incident.status !== 'active') {
-      return NextResponse.json(
-        { error: 'This incident is not currently active' },
-        { status: 400 }
-      );
-    }
+    // Anon key client — RLS enforces:
+    //   - INSERT only (no select/update/delete)
+    //   - incident must be active (with check subquery)
+    const supabase = createBrowserClient();
 
     // Build insert row — hash phone, never store raw
     const row: Record<string, unknown> = {
@@ -97,6 +70,13 @@ export async function POST(request: NextRequest) {
     const { error } = await supabase.from('checkins').insert(row);
 
     if (error) {
+      // RLS will reject if incident is not active
+      if (error.code === '42501' || error.message.includes('policy')) {
+        return NextResponse.json(
+          { error: 'This incident is not currently active' },
+          { status: 400 }
+        );
+      }
       return NextResponse.json({ error: 'Check-in failed. Please try again.' }, { status: 500 });
     }
 
