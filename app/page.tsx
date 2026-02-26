@@ -1,201 +1,414 @@
 'use client';
 
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Target, Brain, Users, TrendingUp, Shield, Heart, Zap, ArrowRight } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import {
+  SAFE_ZONES,
+  ZONE_TYPE_ICONS,
+  ZONE_TYPE_COLORS,
+  ZONE_TYPE_LABELS,
+  findNearestZones,
+  type SafeZone,
+} from './data/safe-zones';
 
-export default function SecondaryLanding() {
-  const [email, setEmail] = useState('');
-  const [submitted, setSubmitted] = useState(false);
+type Screen = 'home' | 'find_safe_zone' | 'need_help';
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    // TODO: Replace with your actual email collection service
-    console.log({ email });
-    setSubmitted(true);
-    setTimeout(() => {
-      setEmail('');
-      setSubmitted(false);
-    }, 3000);
-  };
+export default function CEGDashboard() {
+  const [screen, setScreen] = useState<Screen>('home');
+  const [zones, setZones] = useState<Array<SafeZone & { distance?: number }>>(SAFE_ZONES);
+  const [gpsStatus, setGpsStatus] = useState<'idle' | 'loading' | 'done' | 'denied'>('idle');
+  const [filterPets, setFilterPets] = useState(false);
+  const [filterAda, setFilterAda] = useState(false);
 
-  return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      {/* Navigation */}
-      <nav className="fixed top-0 w-full bg-white/80 backdrop-blur-md border-b border-slate-200 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-2">
-              <Target className="w-8 h-8 text-blue-600" />
-              <span className="text-2xl font-bold text-slate-900">SFG Secondary</span>
+  const handleFindNearest = useCallback(() => {
+    if (!navigator.geolocation) {
+      setGpsStatus('denied');
+      return;
+    }
+    setGpsStatus('loading');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const sorted = findNearestZones(pos.coords.latitude, pos.coords.longitude);
+        setZones(sorted);
+        setGpsStatus('done');
+      },
+      () => {
+        setGpsStatus('denied');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, []);
+
+  const filteredZones = zones.filter((z) => {
+    if (filterPets && !z.petFriendly) return false;
+    if (filterAda && !z.adaAccessible) return false;
+    return true;
+  });
+
+  // ── HOME SCREEN ──
+  if (screen === 'home') {
+    return (
+      <main className="min-h-screen bg-slate-900 text-white">
+        {/* Header */}
+        <header className="px-4 pt-6 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-red-600 flex items-center justify-center text-lg font-bold">
+              C
             </div>
-            <a href="#signup" className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors">
-              Get Started
-            </a>
+            <div>
+              <h1 className="text-xl font-bold leading-tight">Community Emergency Guide</h1>
+              <p className="text-sm text-slate-400">Topanga &middot; Malibu &middot; Calabasas</p>
+            </div>
           </div>
-        </div>
-      </nav>
+        </header>
 
-      {/* Hero Section */}
-      <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
+        {/* 911 Banner */}
+        <a
+          href="tel:911"
+          className="mx-4 mb-6 flex items-center gap-3 bg-red-700 rounded-xl px-4 py-3 active:bg-red-800 transition-colors"
+        >
+          <span className="text-2xl">📞</span>
+          <div>
+            <p className="font-bold text-base">Life-threatening emergency?</p>
+            <p className="text-sm text-red-200">Tap to call 911</p>
+          </div>
+        </a>
+
+        {/* Primary Actions */}
+        <div className="px-4 space-y-3 mb-8">
+          <button
+            onClick={() => setScreen('find_safe_zone')}
+            className="w-full flex items-center gap-4 bg-slate-800 rounded-xl px-5 py-4 active:bg-slate-700 transition-colors border border-slate-700 text-left"
           >
-            <h1 className="text-5xl sm:text-7xl font-bold text-slate-900 mb-8 leading-tight">
-              YOUR NEW
-              <br />
-              <span className="text-blue-600">SECONDARY LANDING</span>
-            </h1>
-            <p className="text-2xl text-slate-700 mb-12 max-w-3xl mx-auto">
-              This is your secondary landing page. Tell me what specific content, positioning, or instructions you want here.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <a href="#signup" className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors">
-                Get Started Now
-              </a>
-              <a href="#features" className="bg-slate-200 text-slate-900 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-slate-300 transition-colors">
-                Learn More
-              </a>
+            <span className="text-3xl">📍</span>
+            <div>
+              <p className="font-bold text-lg">Find Safe Zone</p>
+              <p className="text-sm text-slate-400">Nearest evacuation assembly points</p>
             </div>
-          </motion.div>
-        </div>
-      </section>
+          </button>
 
-      {/* Features Section */}
-      <section id="features" className="py-20 px-4 sm:px-6 lg:px-8 bg-slate-100">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-4xl font-bold text-center mb-16 text-slate-900">
-            What Makes This Different?
+          <a
+            href="/checkin"
+            className="w-full flex items-center gap-4 bg-emerald-700 rounded-xl px-5 py-4 active:bg-emerald-800 transition-colors border border-emerald-600 text-left block"
+          >
+            <span className="text-3xl">✅</span>
+            <div>
+              <p className="font-bold text-lg">Check In Safe</p>
+              <p className="text-sm text-emerald-200">Let people know you&apos;re OK</p>
+            </div>
+          </a>
+
+          <button
+            onClick={() => setScreen('need_help')}
+            className="w-full flex items-center gap-4 bg-amber-700 rounded-xl px-5 py-4 active:bg-amber-800 transition-colors border border-amber-600 text-left"
+          >
+            <span className="text-3xl">🆘</span>
+            <div>
+              <p className="font-bold text-lg">I Need Help</p>
+              <p className="text-sm text-amber-200">EMS, stuck, or sheltering in place</p>
+            </div>
+          </button>
+        </div>
+
+        {/* Resource Links */}
+        <div className="px-4 mb-8">
+          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
+            Live Resources
           </h2>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <FeatureCard
-              icon={<Brain className="w-12 h-12" />}
-              title="Custom Content"
-              description="Tell me what specific content you want here. I'll customize it for your needs."
+          <div className="grid grid-cols-2 gap-2">
+            <ResourceLink href="https://www.watchduty.org/" label="Watch Duty" sub="Live fire map" />
+            <ResourceLink href="https://alert.la/" label="Alert LA" sub="County alerts" />
+            <ResourceLink href="https://www.genasys.com/protective-communications/zonehaven" label="Genasys" sub="Evac zones" />
+            <ResourceLink href="https://quickmap.dot.ca.gov/" label="QuickMap" sub="Road closures" />
+            <ResourceLink
+              href="https://www.redcross.org/get-help/disaster-relief-and-recovery-services/find-an-open-shelter.html"
+              label="Red Cross"
+              sub="Open shelters"
             />
-            <FeatureCard
-              icon={<Target className="w-12 h-12" />}
-              title="New Positioning"
-              description="Different angle, different audience, different value proposition."
-            />
-            <FeatureCard
-              icon={<Users className="w-12 h-12" />}
-              title="Secondary Audience"
-              description="Reach a different segment or use case with this landing page."
-            />
-            <FeatureCard
-              icon={<TrendingUp className="w-12 h-12" />}
-              title="A/B Testing"
-              description="Test different approaches and see what converts better."
-            />
-            <FeatureCard
-              icon={<Shield className="w-12 h-12" />}
-              title="Backup Strategy"
-              description="Have multiple landing pages for different traffic sources."
-            />
-            <FeatureCard
-              icon={<Heart className="w-12 h-12" />}
-              title="Focused Message"
-              description="One clear message, one clear call-to-action, one clear outcome."
-            />
+            <ResourceLink href="https://lacounty.gov/emergency/" label="LA County" sub="Emergency info" />
           </div>
         </div>
-      </section>
 
-      {/* CTA Section */}
-      <section id="signup" className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-2xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            viewport={{ once: true }}
+        {/* Footer */}
+        <footer className="px-4 pb-8 text-center">
+          <p className="text-xs text-slate-500">
+            CEG &middot; Community Emergency Guide &middot;{' '}
+            <a href="https://sfg.ac" className="underline">
+              sfg.ac
+            </a>
+          </p>
+        </footer>
+      </main>
+    );
+  }
+
+  // ── FIND SAFE ZONE SCREEN ──
+  if (screen === 'find_safe_zone') {
+    return (
+      <main className="min-h-screen bg-slate-900 text-white">
+        {/* Top bar */}
+        <header className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-800">
+          <button
+            onClick={() => setScreen('home')}
+            className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg"
           >
-            <h2 className="text-4xl font-bold text-center mb-8 text-slate-900">
-              Ready to Get Started?
-            </h2>
-            <div className="bg-white rounded-2xl p-8 shadow-xl">
-              {submitted ? (
-                <div className="text-center py-8">
-                  <div className="text-green-600 text-2xl font-bold mb-2">✓ Thank you!</div>
-                  <p className="text-slate-600">We'll be in touch soon.</p>
-                </div>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div>
-                    <label htmlFor="email" className="block text-sm font-semibold text-slate-700 mb-2">
-                      Email Address *
-                    </label>
-                    <input
-                      type="email"
-                      id="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:border-blue-600 focus:outline-none text-slate-900"
-                      placeholder="your@email.com"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className="w-full bg-blue-600 text-white py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-                  >
-                    Get Started Now
-                    <ArrowRight className="w-5 h-5" />
-                  </button>
-                  <p className="text-sm text-slate-600 text-center">
-                    Join thousands who are already getting results.
-                  </p>
-                </form>
-              )}
-            </div>
-          </motion.div>
-        </div>
-      </section>
+            ←
+          </button>
+          <h1 className="text-lg font-bold flex-1">Find Safe Zone</h1>
+          <a
+            href="https://www.google.com/maps/search/evacuation+shelter+near+me"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-blue-400 underline"
+          >
+            Open in Maps
+          </a>
+        </header>
 
-      {/* Footer */}
-      <footer className="py-12 px-4 sm:px-6 lg:px-8 bg-slate-900 text-white">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center space-y-4">
-            <div className="flex items-center justify-center space-x-2 mb-4">
-              <Target className="w-8 h-8" />
-              <span className="text-2xl font-bold">SFG Secondary</span>
-            </div>
-            <p className="text-slate-400">
-              "Your secondary landing page for different audiences and use cases."
-            </p>
-            <div className="flex justify-center space-x-6 text-sm text-slate-400">
-              <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
-              <a href="#" className="hover:text-white transition-colors">Terms</a>
-              <a href="mailto:contact@sfg.ac" className="hover:text-white transition-colors">Contact</a>
-            </div>
-            <p className="text-sm text-slate-500 pt-4">
-              © 2025 SFG Secondary. All rights reserved.
-            </p>
+        {/* GPS + Filters */}
+        <div className="px-4 py-3 space-y-3 border-b border-slate-800">
+          <button
+            onClick={handleFindNearest}
+            disabled={gpsStatus === 'loading'}
+            className="w-full flex items-center justify-center gap-2 bg-blue-600 rounded-xl px-4 py-3 font-semibold active:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            {gpsStatus === 'loading' ? (
+              <>
+                <span className="animate-spin">⏳</span> Locating...
+              </>
+            ) : gpsStatus === 'done' ? (
+              <>📍 Sorted by distance</>
+            ) : gpsStatus === 'denied' ? (
+              <>⚠️ Location unavailable — tap to retry</>
+            ) : (
+              <>📍 Find Nearest to Me</>
+            )}
+          </button>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => setFilterPets(!filterPets)}
+              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
+                filterPets
+                  ? 'bg-amber-700 border-amber-500 text-white'
+                  : 'bg-slate-800 border-slate-700 text-slate-300'
+              }`}
+            >
+              🐾 Pet-Friendly
+            </button>
+            <button
+              onClick={() => setFilterAda(!filterAda)}
+              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
+                filterAda
+                  ? 'bg-blue-700 border-blue-500 text-white'
+                  : 'bg-slate-800 border-slate-700 text-slate-300'
+              }`}
+            >
+              ♿ ADA Accessible
+            </button>
           </div>
         </div>
-      </footer>
+
+        {/* Zone count */}
+        <div className="px-4 py-2">
+          <p className="text-sm text-slate-400">
+            {filteredZones.length} zone{filteredZones.length !== 1 ? 's' : ''} found
+          </p>
+        </div>
+
+        {/* Zone List */}
+        <div className="px-4 pb-8 space-y-3">
+          {filteredZones.map((zone) => (
+            <ZoneCard key={zone.id} zone={zone} />
+          ))}
+        </div>
+      </main>
+    );
+  }
+
+  // ── NEED HELP SCREEN ──
+  return (
+    <main className="min-h-screen bg-slate-900 text-white">
+      {/* Top bar */}
+      <header className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-800">
+        <button
+          onClick={() => setScreen('home')}
+          className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg"
+        >
+          ←
+        </button>
+        <h1 className="text-lg font-bold">I Need Help</h1>
+      </header>
+
+      {/* 911 Banner */}
+      <a
+        href="tel:911"
+        className="mx-4 mt-4 mb-2 flex items-center gap-3 bg-red-700 rounded-xl px-4 py-3 active:bg-red-800 transition-colors"
+      >
+        <span className="text-2xl">📞</span>
+        <div>
+          <p className="font-bold text-base">Life-threatening emergency?</p>
+          <p className="text-sm text-red-200">Tap to call 911 now</p>
+        </div>
+      </a>
+
+      <div className="px-4 py-4 space-y-3">
+        {/* EMS */}
+        <a
+          href="tel:911"
+          className="flex items-center gap-4 bg-red-900/60 rounded-xl px-5 py-4 border border-red-700 active:bg-red-900 transition-colors"
+        >
+          <span className="text-3xl">🚑</span>
+          <div>
+            <p className="font-bold text-lg">I Need EMS</p>
+            <p className="text-sm text-red-200">
+              Medical emergency — calls 911 directly
+            </p>
+          </div>
+        </a>
+
+        {/* Stuck / Can't Evacuate */}
+        <a
+          href="/checkin?status=NEED_EMS"
+          className="flex items-center gap-4 bg-amber-900/60 rounded-xl px-5 py-4 border border-amber-700 active:bg-amber-900 transition-colors"
+        >
+          <span className="text-3xl">🔶</span>
+          <div>
+            <p className="font-bold text-lg">Stuck / Can&apos;t Evacuate</p>
+            <p className="text-sm text-amber-200">
+              Report your location so responders can find you
+            </p>
+          </div>
+        </a>
+
+        {/* Sheltering in Place */}
+        <a
+          href="/checkin?status=SIP"
+          className="flex items-center gap-4 bg-slate-800 rounded-xl px-5 py-4 border border-slate-600 active:bg-slate-700 transition-colors"
+        >
+          <span className="text-3xl">🏠</span>
+          <div>
+            <p className="font-bold text-lg">Sheltering in Place</p>
+            <p className="text-sm text-slate-300">
+              Let responders know you are staying at your location
+            </p>
+          </div>
+        </a>
+      </div>
+
+      {/* Shelter-in-Place Tips */}
+      <div className="px-4 py-4">
+        <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+          <h3 className="font-bold text-sm text-slate-300 uppercase tracking-wider mb-3">
+            Shelter-in-Place Tips
+          </h3>
+          <ul className="space-y-2 text-sm text-slate-300">
+            <li>Close all doors, windows, and fireplace dampers</li>
+            <li>Set A/C to recirculate (close outside air intake)</li>
+            <li>Move to an interior room if smoke is heavy</li>
+            <li>Wet towels and place at door gaps</li>
+            <li>Fill sinks and tubs with water</li>
+            <li>Keep phone charged — conserve battery</li>
+          </ul>
+        </div>
+      </div>
     </main>
   );
 }
 
-// Feature Card Component
-function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
+// ── COMPONENTS ──
+
+function ResourceLink({
+  href,
+  label,
+  sub,
+}: {
+  href: string;
+  label: string;
+  sub: string;
+}) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      viewport={{ once: true }}
-      className="bg-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-shadow"
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="bg-slate-800 rounded-lg px-3 py-3 border border-slate-700 active:bg-slate-700 transition-colors block"
     >
-      <div className="text-blue-600 mb-4">{icon}</div>
-      <h3 className="text-xl font-bold mb-2 text-slate-900">{title}</h3>
-      <p className="text-slate-600">{description}</p>
-    </motion.div>
+      <p className="font-semibold text-sm">{label}</p>
+      <p className="text-xs text-slate-400">{sub}</p>
+    </a>
   );
 }
 
+function ZoneCard({ zone }: { zone: SafeZone & { distance?: number } }) {
+  const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${zone.lat},${zone.lon}`;
+  const typeIcon = ZONE_TYPE_ICONS[zone.type];
+  const typeColor = ZONE_TYPE_COLORS[zone.type];
+  const typeLabel = ZONE_TYPE_LABELS[zone.type];
+
+  return (
+    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+      {/* Header */}
+      <div className="px-4 pt-3 pb-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium text-white ${typeColor}`}>
+                {typeIcon} {typeLabel}
+              </span>
+              {zone.topangaGuideDesignation && (
+                <span className="px-2 py-0.5 rounded text-xs font-medium bg-yellow-600 text-white">
+                  {zone.topangaGuideDesignation === 'PSR' ? 'PSR' : 'Primary Shelter'}
+                </span>
+              )}
+            </div>
+            <h3 className="font-bold text-base leading-tight">{zone.name}</h3>
+            <p className="text-sm text-slate-400 mt-0.5">
+              {zone.address}, {zone.city}
+            </p>
+          </div>
+          {zone.distance !== undefined && (
+            <div className="text-right shrink-0">
+              <p className="text-lg font-bold text-blue-400">{zone.distance.toFixed(1)}</p>
+              <p className="text-xs text-slate-400">mi</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Details */}
+      <div className="px-4 pb-2 flex flex-wrap items-center gap-2 text-xs text-slate-300">
+        <span>👥 {zone.capacity.toLocaleString()}</span>
+        {zone.petFriendly && <span>🐾 Pets OK</span>}
+        {zone.adaAccessible && <span>♿ ADA</span>}
+        {zone.amenities.slice(0, 4).map((a) => (
+          <span key={a} className="bg-slate-700 px-1.5 py-0.5 rounded">
+            {a}
+          </span>
+        ))}
+        {zone.amenities.length > 4 && (
+          <span className="text-slate-500">+{zone.amenities.length - 4}</span>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="px-4 pb-3 pt-1 flex gap-2">
+        <a
+          href={mapsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex-1 flex items-center justify-center gap-2 bg-blue-600 rounded-lg px-3 py-2.5 text-sm font-semibold active:bg-blue-700 transition-colors"
+        >
+          Directions
+        </a>
+        {zone.phone && (
+          <a
+            href={`tel:${zone.phone}`}
+            className="flex items-center justify-center gap-1 bg-slate-700 rounded-lg px-4 py-2.5 text-sm font-semibold active:bg-slate-600 transition-colors"
+          >
+            Call
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}

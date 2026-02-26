@@ -3,15 +3,8 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: #0f172a;
+  --foreground: #f1f5f9;
 }
 
 body {
@@ -28,8 +21,8 @@ body {
 
 @layer components {
   .form-input {
-    @apply w-full px-4 py-3 border-2 border-slate-200 rounded-xl
-           text-slate-900 text-base
+    @apply w-full px-4 py-3 border-2 border-slate-600 rounded-xl
+           bg-slate-800 text-white text-base
            focus:border-blue-500 focus:outline-none
            placeholder:text-slate-400;
   }
@@ -39,20 +32,30 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Pulse animation for status indicators */
+@keyframes zone-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-zone-pulse {
+  animation: zone-pulse 2s ease-in-out infinite;
+}
+
+/* Dark scrollbar */
 ::-webkit-scrollbar {
-  width: 10px;
+  width: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: #1e293b;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 5px;
+  background: #475569;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: #64748b;
 }
-
