@@ -189,7 +189,7 @@ async function generate() {
   </div>
 
   <div class="footer">
-    CEG &middot; ceg.sfg.ac &middot; Phase 1 MVP<br>
+    Community Emergency Guide &middot; ceg.sfg.ac<br>
     This sheet is specific to this safe zone. Do not relocate.
   </div>
 </body>

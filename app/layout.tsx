@@ -2,21 +2,21 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SFG Secondary | Your New Landing Page",
-  description: "Secondary landing page for SFG with new instructions and positioning.",
-  keywords: "secondary, landing, page, sfg, new, instructions",
+  title: "CEG | Community Emergency Guide",
+  description: "Pre-plan your household, check in safe, look up a loved one. No account needed.",
+  keywords: "emergency, check-in, evacuation, community, safety, reunification",
   openGraph: {
-    title: "SFG Secondary | Your New Landing Page",
-    description: "Secondary landing page for SFG with new instructions and positioning.",
-    url: "https://sfg-secondary.vercel.app",
-    siteName: "SFG Secondary",
+    title: "CEG | Community Emergency Guide",
+    description: "Pre-plan your household, check in safe, look up a loved one. No account needed.",
+    url: "https://ceg.sfg.ac",
+    siteName: "CEG",
     locale: "en_US",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "SFG Secondary | Your New Landing Page",
-    description: "Secondary landing page for SFG with new instructions and positioning.",
+    title: "CEG | Community Emergency Guide",
+    description: "Pre-plan your household, check in safe, look up a loved one. No account needed.",
   },
 };
 
