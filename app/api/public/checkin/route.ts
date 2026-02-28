@@ -58,22 +58,33 @@ export async function POST(request: NextRequest) {
     const supabase = createBrowserClient();
 
     // Build insert row — hash phone, never store raw
+    // Server-side length truncation for all text fields
+    const safeName = (full_name as string).trim().slice(0, 200);
+    const safeAssembly = typeof body.assembly_point === 'string' ? body.assembly_point.slice(0, 200) : null;
+    const safeZone = typeof body.zone === 'string' ? body.zone.slice(0, 200) : null;
+    const safeEmsNotes = typeof body.ems_notes === 'string' ? body.ems_notes.slice(0, 1000) : null;
+    const safeDepartment = typeof body.department === 'string' ? body.department.slice(0, 500) : null;
+    const safeRole = typeof body.role === 'string' ? body.role.slice(0, 500) : null;
+    const safeNotes = typeof body.notes === 'string' ? body.notes.slice(0, 1000) : null;
+    const safeContactName = typeof body.contact_name === 'string' ? body.contact_name.trim().slice(0, 500) || null : null;
+    const safeDependentNames = typeof body.dependent_names === 'string' ? body.dependent_names.slice(0, 500) : null;
+
     const row: Record<string, unknown> = {
       incident_id,
-      full_name: (full_name as string).trim(),
+      full_name: safeName,
       status,
-      assembly_point: body.assembly_point ?? null,
-      zone: body.zone ?? null,
+      assembly_point: safeAssembly,
+      zone: safeZone,
       party_size: typeof body.party_size === 'number' ? Math.max(1, Math.min(50, body.party_size)) : 1,
       pet_count: typeof body.pet_count === 'number' ? Math.max(0, Math.min(20, body.pet_count)) : 0,
       has_dependents: body.has_dependents ?? false,
-      dependent_names: body.dependent_names ?? null,
+      dependent_names: safeDependentNames,
       needs_transport: body.needs_transport ?? false,
-      ems_notes: body.ems_notes ?? null,
-      department: body.department ?? null,
-      role: body.role ?? null,
-      notes: body.notes ?? null,
-      contact_name: typeof body.contact_name === 'string' ? body.contact_name.trim() || null : null,
+      ems_notes: safeEmsNotes,
+      department: safeDepartment,
+      role: safeRole,
+      notes: safeNotes,
+      contact_name: safeContactName,
     };
 
     // GPS location

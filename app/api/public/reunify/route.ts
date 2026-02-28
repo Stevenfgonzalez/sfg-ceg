@@ -136,11 +136,16 @@ export async function POST(request: NextRequest) {
     try {
       const supabase = createBrowserClient();
 
+      // Server-side length truncation for all text fields
+      const safeSoughtName = sought_name?.trim().slice(0, 200) || null;
+      const safeRequesterName = requester_name?.trim().slice(0, 500) || null;
+      const safeRelationship = typeof relationship === 'string' ? relationship.slice(0, 500) : null;
+
       const row: Record<string, unknown> = {
         incident_id,
-        sought_name: sought_name?.trim() || null,
-        requester_name: requester_name?.trim() || null,
-        relationship: relationship || null,
+        sought_name: safeSoughtName,
+        requester_name: safeRequesterName,
+        relationship: safeRelationship,
       };
 
       if (sought_phone && typeof sought_phone === 'string' && sought_phone.replace(/\D/g, '').length >= 10) {

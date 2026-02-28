@@ -68,22 +68,29 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createBrowserClient();
 
+    // Server-side length truncation for all text fields
+    const safeFirstName = first_name?.trim().slice(0, 200) || 'EMS Caller';
+    const safeComplaintLabel = typeof complaint_label === 'string' ? complaint_label.slice(0, 500) : complaint_code;
+    const safeDispatchNote = typeof dispatch_note === 'string' ? dispatch_note.slice(0, 500) : null;
+    const safeOtherText = typeof other_text === 'string' ? other_text.slice(0, 200) : null;
+    const safeManualAddress = typeof manual_address === 'string' ? manual_address.slice(0, 500) : null;
+
     // Build EMS notes with structured complaint data for dispatch
     const emsNoteParts = [
-      `[EMS-${complaint_code}] ${complaint_label || complaint_code}`,
+      `[EMS-${complaint_code}] ${safeComplaintLabel}`,
       `Tier: ${tier === 1 ? 'CRITICAL' : 'MINOR'}`,
-      dispatch_note ? `Dispatch: ${dispatch_note}` : null,
-      other_text ? `Details: ${other_text}` : null,
-      manual_address ? `Address: ${manual_address}` : null,
+      safeDispatchNote ? `Dispatch: ${safeDispatchNote}` : null,
+      safeOtherText ? `Details: ${safeOtherText}` : null,
+      safeManualAddress ? `Address: ${safeManualAddress}` : null,
     ].filter(Boolean);
 
     const row: Record<string, unknown> = {
       incident_id: DEFAULT_INCIDENT_ID,
-      full_name: first_name?.trim() || 'EMS Caller',
+      full_name: safeFirstName,
       status: 'NEED_MEDICAL',
       party_size: typeof people_count === 'number' ? Math.max(1, Math.min(50, people_count)) : 1,
       pet_count: 0,
-      ems_notes: emsNoteParts.join(' | '),
+      ems_notes: emsNoteParts.join(' | ').slice(0, 1000),
       needs_transport: tier === 1,
     };
 

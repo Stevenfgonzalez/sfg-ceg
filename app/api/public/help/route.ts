@@ -82,17 +82,25 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createBrowserClient();
 
+    // Server-side length truncation for all text fields
+    const safeComplaintLabel = typeof complaint_label === 'string' ? complaint_label.slice(0, 500) : complaint_code;
+    const safeDispatchNote = typeof dispatch_note === 'string' ? dispatch_note.slice(0, 500) : null;
+    const safeCallerName = caller_name?.trim().slice(0, 200) || null;
+    const safeAssemblyPoint = typeof assembly_point === 'string' ? assembly_point.slice(0, 200) : null;
+    const safeManualAddress = manual_address?.trim().slice(0, 500) || null;
+    const safeOtherText = typeof other_text === 'string' ? other_text.slice(0, 200) : null;
+
     const row: Record<string, unknown> = {
       incident_id,
       complaint_code,
-      complaint_label: complaint_label || complaint_code,
+      complaint_label: safeComplaintLabel,
       triage_tier,
-      dispatch_note: dispatch_note || null,
-      caller_name: caller_name?.trim() || null,
+      dispatch_note: safeDispatchNote,
+      caller_name: safeCallerName,
       party_size: typeof party_size === 'number' ? Math.max(1, Math.min(50, party_size)) : 1,
-      assembly_point: assembly_point || null,
-      manual_address: manual_address?.trim() || null,
-      other_text: typeof other_text === 'string' ? other_text.slice(0, 200) : null,
+      assembly_point: safeAssemblyPoint,
+      manual_address: safeManualAddress,
+      other_text: safeOtherText,
       status: triage_tier === 3 ? 'INFO_ONLY' : 'NEW',
     };
 
