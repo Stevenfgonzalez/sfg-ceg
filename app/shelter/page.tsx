@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { submitWithFallback } from '@/lib/offline-queue';
+import { DEFAULT_INCIDENT_ID } from '@/lib/constants';
 
 export default function ShelterPage() {
   const [gps, setGps] = useState<{ lat: number; lon: number } | null>(null);
@@ -9,6 +11,7 @@ export default function ShelterPage() {
   const [partySize, setPartySize] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [queued, setQueued] = useState(false);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -31,24 +34,19 @@ export default function ShelterPage() {
     if (!hasLocation || submitting) return;
     setSubmitting(true);
 
-    try {
-      await fetch('/api/public/checkin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          incident_id: '00000000-0000-0000-0000-000000000000',
-          full_name: 'Shelter-in-Place',
-          status: 'SHELTERING_HERE',
-          party_size: partySize,
-          lat: gps?.lat,
-          lon: gps?.lon,
-          notes: manualAddress ? `Address: ${manualAddress}` : undefined,
-        }),
-      });
-    } catch {
-      // Offline — will show success regardless
-    }
+    const result = await submitWithFallback('/api/public/checkin', {
+      incident_id: DEFAULT_INCIDENT_ID,
+      full_name: 'Shelter-in-Place',
+      status: 'SHELTERING_HERE',
+      party_size: partySize,
+      lat: gps?.lat,
+      lon: gps?.lon,
+      notes: manualAddress ? `Address: ${manualAddress}` : undefined,
+    });
 
+    if (!result.online) {
+      setQueued(true);
+    }
     setSubmitted(true);
     setSubmitting(false);
   };
@@ -63,7 +61,12 @@ export default function ShelterPage() {
 
         <div className="px-4 pt-12 text-center space-y-4">
           <div className="text-6xl">🏠</div>
-          <h2 className="text-2xl font-extrabold">Location Shared</h2>
+          <h2 className="text-2xl font-extrabold">{queued ? 'Location Queued' : 'Location Shared'}</h2>
+          {queued && (
+            <p className="text-amber-300 text-sm font-semibold">
+              You appear to be offline. Your location will be sent automatically when connectivity returns.
+            </p>
+          )}
           <p className="text-slate-300">
             Responders can see you&apos;re sheltering in place.
             <br />

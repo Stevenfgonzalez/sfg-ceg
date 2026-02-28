@@ -1,10 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createBrowserClient } from '@/lib/supabase';
-import { hashPhone, phoneLast4 } from '@/lib/phone';
+import { hashPhone, phoneLast4, getHashVersion } from '@/lib/phone';
+import { checkGeneralRateLimit } from '@/lib/rate-limit';
+import { VALID_COMPLAINT_CODES, DEFAULT_INCIDENT_ID } from '@/lib/constants';
+import { log } from '@/lib/logger';
 
 // POST /api/public/ems
 // Public EMS request — stores as a NEED_MEDICAL check-in with complaint metadata
 export async function POST(request: NextRequest) {
+  const start = Date.now();
+
+  // Rate limit
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    ?? request.headers.get('x-real-ip')
+    ?? 'unknown';
+
+  const { allowed, remaining } = await checkGeneralRateLimit(ip);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please wait before trying again.' },
+      { status: 429, headers: { 'Retry-After': '60' } }
+    );
+  }
+
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -42,6 +60,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Complaint code is required' }, { status: 400 });
   }
 
+  // Validate complaint code against whitelist
+  if (!VALID_COMPLAINT_CODES.has(complaint_code)) {
+    return NextResponse.json({ error: 'Invalid complaint code' }, { status: 400 });
+  }
+
   try {
     const supabase = createBrowserClient();
 
@@ -55,14 +78,13 @@ export async function POST(request: NextRequest) {
     ].filter(Boolean);
 
     const row: Record<string, unknown> = {
-      // Use a default incident ID — EMS requests work without a QR-scoped incident
-      incident_id: '00000000-0000-0000-0000-000000000000',
+      incident_id: DEFAULT_INCIDENT_ID,
       full_name: first_name?.trim() || 'EMS Caller',
       status: 'NEED_MEDICAL',
       party_size: typeof people_count === 'number' ? Math.max(1, Math.min(50, people_count)) : 1,
       pet_count: 0,
       ems_notes: emsNoteParts.join(' | '),
-      needs_transport: tier === 1, // Critical complaints likely need transport
+      needs_transport: tier === 1,
     };
 
     // GPS
@@ -75,6 +97,7 @@ export async function POST(request: NextRequest) {
     if (phone && typeof phone === 'string' && phone.replace(/\D/g, '').length >= 10) {
       row.phone_hash = hashPhone(phone);
       row.phone_last4 = phoneLast4(phone);
+      row.phone_hash_v = getHashVersion();
     }
 
     const { error } = await supabase.from('checkins').insert(row);
@@ -86,13 +109,18 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      log({ level: 'error', event: 'ems_failed', route: '/api/public/ems', error: error.message, meta: { complaint_code } });
       return NextResponse.json({ error: 'EMS request failed. Please call 911.' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, message: 'EMS request recorded', tier });
+    log({ level: 'info', event: 'ems_created', route: '/api/public/ems', duration_ms: Date.now() - start, meta: { complaint_code, tier } });
+    return NextResponse.json({ success: true, message: 'EMS request recorded', tier }, {
+      headers: { 'X-RateLimit-Remaining': String(remaining) },
+    });
   } catch (err) {
+    log({ level: 'error', event: 'ems_error', route: '/api/public/ems', error: err instanceof Error ? err.message : 'Unknown error' });
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

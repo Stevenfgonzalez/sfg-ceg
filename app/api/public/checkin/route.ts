@@ -1,24 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createBrowserClient } from '@/lib/supabase';
-import { hashPhone, phoneLast4 } from '@/lib/phone';
-
-const VALID_STATUSES = [
-  'SAFE',
-  'EVACUATING',
-  'AT_MUSTER',
-  'SHELTERING_HERE',
-  'NEED_HELP',
-  'NEED_MEDICAL',
-  'LOOKING_FOR_SOMEONE',
-  // Backward compat with Phase 1 codes
-  'SIP',
-  'NEED_EMS',
-];
+import { hashPhone, phoneLast4, getHashVersion } from '@/lib/phone';
+import { checkGeneralRateLimit } from '@/lib/rate-limit';
+import { VALID_STATUSES, UUID_REGEX } from '@/lib/constants';
+import { log } from '@/lib/logger';
 
 // POST /api/public/checkin
 // Public QR check-in — uses ANON key, RLS enforces insert-only + active incident
 // Phone is hashed server-side before touching the database
 export async function POST(request: NextRequest) {
+  const start = Date.now();
+
+  // Rate limit
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    ?? request.headers.get('x-real-ip')
+    ?? 'unknown';
+
+  const { allowed, remaining } = await checkGeneralRateLimit(ip);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please wait before trying again.' },
+      { status: 429, headers: { 'Retry-After': '60' } }
+    );
+  }
+
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -38,15 +43,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Full name is required' }, { status: 400 });
   }
 
-  if (!status || !VALID_STATUSES.includes(status)) {
+  if (!status || !VALID_STATUSES.includes(status as typeof VALID_STATUSES[number])) {
     return NextResponse.json(
       { error: `Status must be one of: ${VALID_STATUSES.join(', ')}` },
       { status: 400 }
     );
   }
 
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!incident_id || !uuidRegex.test(incident_id)) {
+  if (!incident_id || !UUID_REGEX.test(incident_id)) {
     return NextResponse.json({ error: 'Valid incident ID required' }, { status: 400 });
   }
 
@@ -82,6 +86,7 @@ export async function POST(request: NextRequest) {
     if (phone && typeof phone === 'string' && phone.replace(/\D/g, '').length >= 10) {
       row.phone_hash = hashPhone(phone);
       row.phone_last4 = phoneLast4(phone);
+      row.phone_hash_v = getHashVersion();
     }
 
     const { error } = await supabase.from('checkins').insert(row);
@@ -93,13 +98,18 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      log({ level: 'error', event: 'checkin_failed', route: '/api/public/checkin', incident_id, error: error.message });
       return NextResponse.json({ error: 'Check-in failed. Please try again.' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, message: 'Check-in recorded' });
+    log({ level: 'info', event: 'checkin_created', route: '/api/public/checkin', incident_id, duration_ms: Date.now() - start, meta: { status, party_size: row.party_size } });
+    return NextResponse.json({ success: true, message: 'Check-in recorded' }, {
+      headers: { 'X-RateLimit-Remaining': String(remaining) },
+    });
   } catch (err) {
+    log({ level: 'error', event: 'checkin_error', route: '/api/public/checkin', incident_id, error: err instanceof Error ? err.message : 'Unknown error' });
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

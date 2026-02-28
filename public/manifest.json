@@ -1,0 +1,17 @@
+{
+  "name": "Community Emergency Guide",
+  "short_name": "CEG",
+  "description": "Pre-plan your household, check in safe, look up a loved one. No account needed.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#dc2626",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ]
+}

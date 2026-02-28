@@ -1,11 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createBrowserClient } from '@/lib/supabase';
-import { hashPhone, phoneLast4 } from '@/lib/phone';
+import { hashPhone, phoneLast4, getHashVersion } from '@/lib/phone';
+import { checkGeneralRateLimit } from '@/lib/rate-limit';
+import { VALID_COMPLAINT_CODES, UUID_REGEX, VALID_TRIAGE_TIERS } from '@/lib/constants';
+import { log } from '@/lib/logger';
 
 // POST /api/public/help
 // Public help/triage request — writes to help_requests table
 // Supports all 3 tiers: Tier 1 (911 triggered), Tier 2 (callback), Tier 3 (info)
 export async function POST(request: NextRequest) {
+  const start = Date.now();
+
+  // Rate limit
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    ?? request.headers.get('x-real-ip')
+    ?? 'unknown';
+
+  const { allowed, remaining } = await checkGeneralRateLimit(ip);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please wait before trying again.' },
+      { status: 429, headers: { 'Retry-After': '60' } }
+    );
+  }
+
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -48,12 +66,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Complaint code is required' }, { status: 400 });
   }
 
-  if (!triage_tier || ![1, 2, 3].includes(triage_tier)) {
+  // Validate complaint code against whitelist
+  if (!VALID_COMPLAINT_CODES.has(complaint_code)) {
+    return NextResponse.json({ error: 'Invalid complaint code' }, { status: 400 });
+  }
+
+  if (!triage_tier || !VALID_TRIAGE_TIERS.includes(triage_tier as typeof VALID_TRIAGE_TIERS[number])) {
     return NextResponse.json({ error: 'Valid triage tier required (1, 2, or 3)' }, { status: 400 });
   }
 
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!incident_id || !uuidRegex.test(incident_id)) {
+  if (!incident_id || !UUID_REGEX.test(incident_id)) {
     return NextResponse.json({ error: 'Valid incident ID required' }, { status: 400 });
   }
 
@@ -84,6 +106,7 @@ export async function POST(request: NextRequest) {
     if (phone && typeof phone === 'string' && phone.replace(/\D/g, '').length >= 10) {
       row.phone_hash = hashPhone(phone);
       row.phone_last4 = phoneLast4(phone);
+      row.phone_hash_v = getHashVersion();
     }
 
     const { error } = await supabase.from('help_requests').insert(row);
@@ -95,13 +118,18 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      log({ level: 'error', event: 'help_failed', route: '/api/public/help', incident_id, error: error.message });
       return NextResponse.json({ error: 'Help request failed. Please call 911.' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, triage_tier });
+    log({ level: 'info', event: 'help_created', route: '/api/public/help', incident_id, duration_ms: Date.now() - start, meta: { complaint_code, triage_tier } });
+    return NextResponse.json({ success: true, triage_tier }, {
+      headers: { 'X-RateLimit-Remaining': String(remaining) },
+    });
   } catch (err) {
+    log({ level: 'error', event: 'help_error', route: '/api/public/help', incident_id, error: err instanceof Error ? err.message : 'Unknown error' });
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

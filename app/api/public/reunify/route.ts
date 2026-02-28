@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createBrowserClient, createServiceClient } from '@/lib/supabase';
-import { hashPhone, phoneLast4 } from '@/lib/phone';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { hashPhone, hashPhoneLegacy, phoneLast4, getHashVersion } from '@/lib/phone';
+import { checkReunificationRateLimit } from '@/lib/rate-limit';
+import { UUID_REGEX } from '@/lib/constants';
+import { log } from '@/lib/logger';
 
 // POST /api/public/reunify
 // Public reunification — two actions:
@@ -12,11 +14,13 @@ import { checkRateLimit } from '@/lib/rate-limit';
 // "Authorization without identification" — same principle as TAP ID.
 
 export async function POST(request: NextRequest) {
+  const start = Date.now();
+
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
     ?? request.headers.get('x-real-ip')
     ?? 'unknown';
 
-  const { allowed, remaining } = checkRateLimit(ip);
+  const { allowed, remaining } = await checkReunificationRateLimit(ip);
   if (!allowed) {
     return NextResponse.json(
       { error: 'Too many requests. Please wait before trying again.' },
@@ -34,8 +38,7 @@ export async function POST(request: NextRequest) {
   const action = body.action as string;
   const incident_id = body.incident_id as string;
 
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!incident_id || !uuidRegex.test(incident_id)) {
+  if (!incident_id || !UUID_REGEX.test(incident_id)) {
     return NextResponse.json({ error: 'Valid incident ID required' }, { status: 400 });
   }
 
@@ -54,6 +57,7 @@ export async function POST(request: NextRequest) {
 
       // We still do the lookup server-side for audit logging,
       // but we NEVER tell the caller whether we found a match.
+      let found = false;
       const { data } = await supabase
         .from('checkins')
         .select('id')
@@ -62,14 +66,33 @@ export async function POST(request: NextRequest) {
         .limit(1)
         .maybeSingle();
 
+      found = data !== null;
+
+      // Dual-version lookup: try legacy hash if v2 didn't match
+      if (!found && getHashVersion() === 2) {
+        const legacyHash = hashPhoneLegacy(phone);
+        if (legacyHash !== phoneHash) {
+          const { data: legacyData } = await supabase
+            .from('checkins')
+            .select('id')
+            .eq('incident_id', incident_id)
+            .eq('phone_hash', legacyHash)
+            .limit(1)
+            .maybeSingle();
+          found = legacyData !== null;
+        }
+      }
+
       // Audit log
       await supabase.from('reunification_lookups').insert({
         incident_id,
         phone_hash: phoneHash,
-        found: data !== null,
+        found,
         ip_address: ip,
         user_agent: request.headers.get('user-agent') ?? null,
       });
+
+      log({ level: 'info', event: 'reunify_lookup', route: '/api/public/reunify', incident_id, duration_ms: Date.now() - start });
 
       // SAME message regardless — authorization without identification
       return NextResponse.json({
@@ -77,7 +100,8 @@ export async function POST(request: NextRequest) {
       }, {
         headers: { 'X-RateLimit-Remaining': String(remaining) },
       });
-    } catch {
+    } catch (err) {
+      log({ level: 'error', event: 'reunify_lookup_error', route: '/api/public/reunify', incident_id, error: err instanceof Error ? err.message : 'Unknown error' });
       return NextResponse.json(
         { error: 'Lookup failed. Please try again.' },
         { status: 500 }
@@ -140,14 +164,17 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           );
         }
+        log({ level: 'error', event: 'reunify_request_failed', route: '/api/public/reunify', incident_id, error: error.message });
         return NextResponse.json({ error: 'Request failed. Please try again.' }, { status: 500 });
       }
 
+      log({ level: 'info', event: 'reunify_request_created', route: '/api/public/reunify', incident_id, duration_ms: Date.now() - start });
       return NextResponse.json({
         success: true,
         message: 'Your request has been submitted. The reunification team will follow up.',
       });
-    } catch {
+    } catch (err) {
+      log({ level: 'error', event: 'reunify_request_error', route: '/api/public/reunify', incident_id, error: err instanceof Error ? err.message : 'Unknown error' });
       return NextResponse.json(
         { error: 'Request failed. Please try again.' },
         { status: 500 }
