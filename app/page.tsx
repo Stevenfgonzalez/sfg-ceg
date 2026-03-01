@@ -109,6 +109,17 @@ export default function CEGDashboard() {
           </button>
 
           <a
+            href="/hospitals"
+            className="w-full flex items-center gap-4 bg-red-800 rounded-xl px-5 py-4 active:bg-red-900 transition-colors border border-red-700 text-left block"
+          >
+            <span className="text-3xl">🏥</span>
+            <div>
+              <p className="font-bold text-lg">Nearby Emergency Rooms</p>
+              <p className="text-sm text-red-200">Trauma centers &amp; ERs sorted by distance</p>
+            </div>
+          </a>
+
+          <a
             href="/reunify"
             className="w-full flex items-center gap-4 bg-purple-700 rounded-xl px-5 py-4 active:bg-purple-800 transition-colors border border-purple-600 text-left block"
           >
