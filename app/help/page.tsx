@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { track } from '@vercel/analytics';
+import { logEvent } from '@/lib/analytics';
 import { saveToOutbox } from '@/lib/offline-store';
 import { trySyncNow } from '@/lib/outbox-sync';
 
@@ -153,7 +153,7 @@ function HelpPage() {
   // ── HANDLE COMPLAINT SELECTION ──
   const handleComplaintSelect = useCallback((c: Complaint) => {
     setSelectedComplaint(c);
-    track('help_complaint', { complaint: c.code, tier: c.tier });
+    logEvent('help_complaint', { complaint: c.code, tier: c.tier });
 
     if (c.code === 'OTHER') {
       setScreen('other_text');

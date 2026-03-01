@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { track } from '@vercel/analytics';
+import { logEvent } from '@/lib/analytics';
 import { DEFAULT_INCIDENT_ID } from '@/lib/constants';
 import { saveToOutbox } from '@/lib/offline-store';
 import { trySyncNow } from '@/lib/outbox-sync';
@@ -50,7 +50,7 @@ export default function ShelterPage() {
       // IndexedDB failure — still show success
     }
 
-    track('shelter_submitted', { party_size: partySize });
+    logEvent('shelter_submitted', { party_size: partySize });
     setSubmitted(true);
     setSubmitting(false);
   };

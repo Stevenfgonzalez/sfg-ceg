@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { track } from '@vercel/analytics';
+import { logEvent } from '@/lib/analytics';
 import { DEFAULT_INCIDENT_ID } from '@/lib/constants';
 import { saveToOutbox } from '@/lib/offline-store';
 import { trySyncNow } from '@/lib/outbox-sync';
@@ -64,7 +64,7 @@ export default function StuckPage() {
       // IndexedDB failure — still show success
     }
 
-    track('stuck_submitted', { reason: reason || 'unknown' });
+    logEvent('stuck_submitted', { reason: reason || 'unknown' });
     setSubmitted(true);
     setSubmitting(false);
   };

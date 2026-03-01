@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Analytics } from "@vercel/analytics/react";
+
 import "./globals.css";
 import { ServiceWorkerRegistration } from "./sw-register";
 import DegradedBanner from "@/components/DegradedBanner";
@@ -34,7 +34,6 @@ export default function RootLayout({
       <body className="antialiased">
         <DegradedBanner />
         {children}
-        <Analytics />
         <ServiceWorkerRegistration />
       </body>
     </html>

@@ -2,7 +2,7 @@
 
 import { useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { track } from '@vercel/analytics';
+import { logEvent } from '@/lib/analytics';
 import { saveToOutbox } from '@/lib/offline-store';
 import { trySyncNow } from '@/lib/outbox-sync';
 
@@ -55,7 +55,7 @@ function ReunifyPage() {
       setLookupMessage('Network error. Please try again.');
     }
 
-    track('reunify_lookup');
+    logEvent('reunify_lookup');
     setSearching(false);
     setScreen('result');
   };
@@ -79,7 +79,7 @@ function ReunifyPage() {
       // IndexedDB failure — still show success
     }
 
-    track('reunify_request_submitted');
+    logEvent('reunify_request_submitted');
     setSubmitting(false);
     setScreen('request_sent');
   };

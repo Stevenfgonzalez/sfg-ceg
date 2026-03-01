@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { track } from '@vercel/analytics';
+import { logEvent } from '@/lib/analytics';
 import { findNearestZones, ZONE_TYPE_ICONS, type SafeZone } from '../data/safe-zones';
 import { saveToOutbox } from '@/lib/offline-store';
 import { trySyncNow } from '@/lib/outbox-sync';
@@ -235,7 +235,7 @@ function CheckInFlow() {
       trySyncNow();
 
       // Show success immediately — server sync happens in the background
-      track('checkin_submitted', { status, party_size: partySize });
+      logEvent('checkin_submitted', { status, party_size: partySize });
       setStep('done');
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Something went wrong');
@@ -398,7 +398,7 @@ function CheckInFlow() {
         {/* Primary: WE'RE SAFE */}
         <div className="px-4 mb-3">
           <button
-            onClick={() => { track('checkin_status', { status: 'SAFE' }); setStatus('SAFE'); setStep('details'); }}
+            onClick={() => { logEvent('checkin_status', { status: 'SAFE' }); setStatus('SAFE'); setStep('details'); }}
             className="w-full py-5 rounded-xl text-white text-center bg-green-600 active:bg-green-700 transition-colors shadow-lg"
           >
             <span className="text-2xl font-bold flex items-center justify-center gap-3">
@@ -417,7 +417,7 @@ function CheckInFlow() {
               return (
                 <button
                   key={key}
-                  onClick={() => { track('checkin_status', { status: key }); setStatus(key); setStep(nextStep); }}
+                  onClick={() => { logEvent('checkin_status', { status: key }); setStatus(key); setStep(nextStep); }}
                   className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-white text-left border-2 transition-colors ${cfg.bg} ${cfg.border}`}
                 >
                   <span className="text-xl w-8 text-center">{cfg.icon}</span>
@@ -441,7 +441,7 @@ function CheckInFlow() {
                 return (
                   <button
                     key={key}
-                    onClick={() => { track('checkin_status', { status: key }); setStatus(key); setStep('needs'); }}
+                    onClick={() => { logEvent('checkin_status', { status: key }); setStatus(key); setStep('needs'); }}
                     className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-white text-left border-2 transition-colors ${cfg.bg} ${cfg.border}`}
                   >
                     <span className="text-xl w-8 text-center">{cfg.icon}</span>

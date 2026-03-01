@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { track } from '@vercel/analytics';
+import { logEvent } from '@/lib/analytics';
 import {
   HOSPITALS,
   TRAUMA_LEVEL_LABELS,
@@ -30,7 +30,7 @@ export default function HospitalsPage() {
         const sorted = findNearestHospitals(pos.coords.latitude, pos.coords.longitude);
         setHospitals(sorted);
         setGpsStatus('done');
-        track('gps_sort', { page: 'hospitals' });
+        logEvent('gps_sort', { page: 'hospitals' });
       },
       () => {
         setGpsStatus('denied');
@@ -94,7 +94,7 @@ export default function HospitalsPage() {
 
         <div className="grid grid-cols-2 gap-2">
           <button
-            onClick={() => { track('filter_toggle', { filter: 'trauma', on: !filterTrauma }); setFilterTrauma(!filterTrauma); }}
+            onClick={() => { logEvent('filter_toggle', { filter: 'trauma', on: !filterTrauma }); setFilterTrauma(!filterTrauma); }}
             className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
               filterTrauma
                 ? 'bg-red-700 border-red-500 text-white'
@@ -104,7 +104,7 @@ export default function HospitalsPage() {
             Trauma Center
           </button>
           <button
-            onClick={() => { track('filter_toggle', { filter: 'pediatric', on: !filterPediatric }); setFilterPediatric(!filterPediatric); }}
+            onClick={() => { logEvent('filter_toggle', { filter: 'pediatric', on: !filterPediatric }); setFilterPediatric(!filterPediatric); }}
             className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
               filterPediatric
                 ? 'bg-blue-700 border-blue-500 text-white'
@@ -114,7 +114,7 @@ export default function HospitalsPage() {
             Pediatric
           </button>
           <button
-            onClick={() => { track('filter_toggle', { filter: 'burn', on: !filterBurn }); setFilterBurn(!filterBurn); }}
+            onClick={() => { logEvent('filter_toggle', { filter: 'burn', on: !filterBurn }); setFilterBurn(!filterBurn); }}
             className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
               filterBurn
                 ? 'bg-orange-700 border-orange-500 text-white'
@@ -124,7 +124,7 @@ export default function HospitalsPage() {
             Burn Center
           </button>
           <button
-            onClick={() => { track('filter_toggle', { filter: 'labor_delivery', on: !filterLD }); setFilterLD(!filterLD); }}
+            onClick={() => { logEvent('filter_toggle', { filter: 'labor_delivery', on: !filterLD }); setFilterLD(!filterLD); }}
             className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
               filterLD
                 ? 'bg-pink-700 border-pink-500 text-white'
@@ -213,14 +213,14 @@ function HospitalCard({ hospital }: { hospital: Hospital & { distance?: number }
           href={mapsUrl}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={() => track('hospital_directions', { hospital: hospital.shortName })}
+          onClick={() => logEvent('hospital_directions', { hospital: hospital.shortName })}
           className="flex-1 flex items-center justify-center gap-2 bg-blue-600 rounded-lg px-3 py-2.5 text-sm font-semibold active:bg-blue-700 transition-colors"
         >
           Directions
         </a>
         <a
           href={`tel:${hospital.phone}`}
-          onClick={() => track('hospital_call', { hospital: hospital.shortName })}
+          onClick={() => logEvent('hospital_call', { hospital: hospital.shortName })}
           className="flex items-center justify-center gap-1 bg-slate-700 rounded-lg px-4 py-2.5 text-sm font-semibold active:bg-slate-600 transition-colors"
         >
           Call ER

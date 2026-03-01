@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { track } from '@vercel/analytics';
+import { logEvent } from '@/lib/analytics';
 import {
   SAFE_ZONES,
   ZONE_TYPE_ICONS,
@@ -31,7 +31,7 @@ export default function CEGDashboard() {
         const sorted = findNearestZones(pos.coords.latitude, pos.coords.longitude);
         setZones(sorted);
         setGpsStatus('done');
-        track('gps_sort', { page: 'safe_zones' });
+        logEvent('gps_sort', { page: 'safe_zones' });
       },
       () => {
         setGpsStatus('denied');
@@ -78,7 +78,7 @@ export default function CEGDashboard() {
         {/* Primary Actions */}
         <div className="px-4 space-y-3 mb-8">
           <button
-            onClick={() => { track('nav_click', { target: 'find_safe_zone' }); setScreen('find_safe_zone'); }}
+            onClick={() => { logEvent('nav_click', { target: 'find_safe_zone' }); setScreen('find_safe_zone'); }}
             className="w-full flex items-center gap-4 bg-slate-800 rounded-xl px-5 py-4 active:bg-slate-700 transition-colors border border-slate-700 text-left"
           >
             <span className="text-3xl">📍</span>
@@ -100,7 +100,7 @@ export default function CEGDashboard() {
           </a>
 
           <button
-            onClick={() => { track('nav_click', { target: 'need_help' }); setScreen('need_help'); }}
+            onClick={() => { logEvent('nav_click', { target: 'need_help' }); setScreen('need_help'); }}
             className="w-full flex items-center gap-4 bg-amber-700 rounded-xl px-5 py-4 active:bg-amber-800 transition-colors border border-amber-600 text-left"
           >
             <span className="text-3xl">🆘</span>
@@ -224,7 +224,7 @@ export default function CEGDashboard() {
 
           <div className="flex gap-2">
             <button
-              onClick={() => { track('filter_toggle', { filter: 'pets', on: !filterPets }); setFilterPets(!filterPets); }}
+              onClick={() => { logEvent('filter_toggle', { filter: 'pets', on: !filterPets }); setFilterPets(!filterPets); }}
               className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
                 filterPets
                   ? 'bg-amber-700 border-amber-500 text-white'
@@ -234,7 +234,7 @@ export default function CEGDashboard() {
               🐾 Pet-Friendly
             </button>
             <button
-              onClick={() => { track('filter_toggle', { filter: 'ada', on: !filterAda }); setFilterAda(!filterAda); }}
+              onClick={() => { logEvent('filter_toggle', { filter: 'ada', on: !filterAda }); setFilterAda(!filterAda); }}
               className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
                 filterAda
                   ? 'bg-blue-700 border-blue-500 text-white'
@@ -369,7 +369,7 @@ function ResourceLink({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      onClick={() => track('resource_click', { resource: label })}
+      onClick={() => logEvent('resource_click', { resource: label })}
       className="bg-slate-800 rounded-lg px-3 py-3 border border-slate-700 active:bg-slate-700 transition-colors block"
     >
       <p className="font-semibold text-sm">{label}</p>
@@ -435,7 +435,7 @@ function ZoneCard({ zone }: { zone: SafeZone & { distance?: number } }) {
           href={mapsUrl}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={() => track('zone_directions', { zone: zone.name })}
+          onClick={() => logEvent('zone_directions', { zone: zone.name })}
           className="flex-1 flex items-center justify-center gap-2 bg-blue-600 rounded-lg px-3 py-2.5 text-sm font-semibold active:bg-blue-700 transition-colors"
         >
           Directions
@@ -443,7 +443,7 @@ function ZoneCard({ zone }: { zone: SafeZone & { distance?: number } }) {
         {zone.phone && (
           <a
             href={`tel:${zone.phone}`}
-            onClick={() => track('zone_call', { zone: zone.name })}
+            onClick={() => logEvent('zone_call', { zone: zone.name })}
             className="flex items-center justify-center gap-1 bg-slate-700 rounded-lg px-4 py-2.5 text-sm font-semibold active:bg-slate-600 transition-colors"
           >
             Call
