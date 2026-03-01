@@ -5,6 +5,8 @@ import {
   VALID_STATUSES,
   VALID_COMPLAINT_CODES,
   VALID_TRIAGE_TIERS,
+  VALID_NEED_CATEGORY_CODES,
+  VALID_PRIORITIES,
   UUID_REGEX,
 } from '@/lib/constants';
 
@@ -75,6 +77,11 @@ export interface CheckinInput {
   contact_name?: string | null;
   lat?: number;
   lon?: number;
+  // Needs assessment fields
+  adult_count: number;
+  child_count: number;
+  priority: string | null;
+  needs_categories: string[];
 }
 
 export function validateCheckinBody(body: Record<string, unknown>): ValidationResult<CheckinInput> {
@@ -99,6 +106,22 @@ export function validateCheckinBody(body: Record<string, unknown>): ValidationRe
     return { ok: false, error: { error: 'Valid incident ID required', status: 400 } };
   }
 
+  // Needs assessment fields
+  const adultCount = clampInt(body.adult_count, 0, 50, 0);
+  const childCount = clampInt(body.child_count, 0, 50, 0);
+  const partySize = Math.max(1, adultCount + childCount);
+
+  const rawPriority = typeof body.priority === 'string' ? body.priority : null;
+  const priority = rawPriority && VALID_PRIORITIES.includes(rawPriority as typeof VALID_PRIORITIES[number])
+    ? rawPriority
+    : null;
+
+  const needsCategories = Array.isArray(body.needs_categories)
+    ? (body.needs_categories as unknown[])
+        .filter((c): c is string => typeof c === 'string' && VALID_NEED_CATEGORY_CODES.has(c))
+        .slice(0, 10)
+    : [];
+
   return {
     ok: true,
     data: {
@@ -108,7 +131,7 @@ export function validateCheckinBody(body: Record<string, unknown>): ValidationRe
       phone: typeof body.phone === 'string' ? body.phone : undefined,
       assembly_point: safeString(body.assembly_point, 200),
       zone: safeString(body.zone, 200),
-      party_size: clampInt(body.party_size, 1, 50, 1),
+      party_size: body.party_size !== undefined ? clampInt(body.party_size, 1, 50, partySize) : partySize,
       pet_count: clampInt(body.pet_count, 0, 20, 0),
       has_dependents: (body.has_dependents as boolean) ?? false,
       dependent_names: safeString(body.dependent_names, 500),
@@ -120,6 +143,10 @@ export function validateCheckinBody(body: Record<string, unknown>): ValidationRe
       contact_name: safeTrimmedString(body.contact_name, 500),
       lat: typeof body.lat === 'number' ? body.lat : undefined,
       lon: typeof body.lon === 'number' ? body.lon : undefined,
+      adult_count: adultCount,
+      child_count: childCount,
+      priority,
+      needs_categories: needsCategories,
     },
   };
 }
@@ -294,4 +321,63 @@ export function validateReunifyBody(
   }
 
   return { ok: false, error: { error: 'Invalid action. Use "lookup" or "request".', status: 400 } };
+}
+
+// ── Check-in Update (PATCH) ──
+
+export interface CheckinUpdateInput {
+  checkin_token: string;
+  priority?: string | null;
+  needs_categories?: string[];
+  status?: string;
+  notes?: string | null;
+}
+
+export function validateCheckinUpdateBody(
+  body: Record<string, unknown>,
+): ValidationResult<CheckinUpdateInput> {
+  const token = body.checkin_token;
+  if (!token || typeof token !== 'string' || token.trim().length < 1) {
+    return { ok: false, error: { error: 'checkin_token is required', status: 400 } };
+  }
+
+  const result: CheckinUpdateInput = {
+    checkin_token: token.trim().slice(0, 36),
+  };
+
+  // Priority (optional)
+  if (body.priority !== undefined) {
+    if (body.priority === null) {
+      result.priority = null;
+    } else if (typeof body.priority === 'string' && VALID_PRIORITIES.includes(body.priority as typeof VALID_PRIORITIES[number])) {
+      result.priority = body.priority;
+    } else {
+      return { ok: false, error: { error: `priority must be one of: ${VALID_PRIORITIES.join(', ')}`, status: 400 } };
+    }
+  }
+
+  // Needs categories (optional)
+  if (body.needs_categories !== undefined) {
+    if (!Array.isArray(body.needs_categories)) {
+      return { ok: false, error: { error: 'needs_categories must be an array', status: 400 } };
+    }
+    result.needs_categories = (body.needs_categories as unknown[])
+      .filter((c): c is string => typeof c === 'string' && VALID_NEED_CATEGORY_CODES.has(c))
+      .slice(0, 10);
+  }
+
+  // Status (optional)
+  if (body.status !== undefined) {
+    if (typeof body.status !== 'string' || !VALID_STATUSES.includes(body.status as typeof VALID_STATUSES[number])) {
+      return { ok: false, error: { error: `status must be one of: ${VALID_STATUSES.join(', ')}`, status: 400 } };
+    }
+    result.status = body.status;
+  }
+
+  // Notes (optional)
+  if (body.notes !== undefined) {
+    result.notes = safeString(body.notes, 1000);
+  }
+
+  return { ok: true, data: result };
 }

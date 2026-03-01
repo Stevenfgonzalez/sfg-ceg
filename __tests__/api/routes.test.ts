@@ -9,8 +9,9 @@ import {
   validateEmsBody,
   validateHelpBody,
   validateReunifyBody,
+  validateCheckinUpdateBody,
 } from '@/lib/api-validation';
-import { VALID_STATUSES, VALID_COMPLAINT_CODES, VALID_TRIAGE_TIERS } from '@/lib/constants';
+import { VALID_STATUSES, VALID_COMPLAINT_CODES, VALID_TRIAGE_TIERS, VALID_PRIORITIES } from '@/lib/constants';
 
 // ── Helper utilities ──
 
@@ -332,6 +333,180 @@ describe('validateCheckinBody', () => {
       expect(result.data.zone).toBeNull();
       expect(result.data.notes).toBeNull();
     }
+  });
+
+  // Needs assessment fields
+  it('defaults adult_count to 0 and child_count to 0', () => {
+    const result = validateCheckinBody(validBody);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.adult_count).toBe(0);
+      expect(result.data.child_count).toBe(0);
+    }
+  });
+
+  it('clamps adult_count between 0 and 50', () => {
+    const low = validateCheckinBody({ ...validBody, adult_count: -5 });
+    expect(low.ok).toBe(true);
+    if (low.ok) expect(low.data.adult_count).toBe(0);
+
+    const high = validateCheckinBody({ ...validBody, adult_count: 100 });
+    expect(high.ok).toBe(true);
+    if (high.ok) expect(high.data.adult_count).toBe(50);
+  });
+
+  it('clamps child_count between 0 and 50', () => {
+    const low = validateCheckinBody({ ...validBody, child_count: -1 });
+    expect(low.ok).toBe(true);
+    if (low.ok) expect(low.data.child_count).toBe(0);
+
+    const high = validateCheckinBody({ ...validBody, child_count: 60 });
+    expect(high.ok).toBe(true);
+    if (high.ok) expect(high.data.child_count).toBe(50);
+  });
+
+  it('computes party_size from adult_count + child_count', () => {
+    const result = validateCheckinBody({ ...validBody, adult_count: 2, child_count: 3 });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.party_size).toBe(5);
+  });
+
+  it('party_size is at least 1', () => {
+    const result = validateCheckinBody({ ...validBody, adult_count: 0, child_count: 0 });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.party_size).toBe(1);
+  });
+
+  it('accepts valid priority values', () => {
+    for (const p of VALID_PRIORITIES) {
+      const result = validateCheckinBody({ ...validBody, priority: p });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.data.priority).toBe(p);
+    }
+  });
+
+  it('rejects invalid priority', () => {
+    const result = validateCheckinBody({ ...validBody, priority: 'URGENT' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.priority).toBeNull();
+  });
+
+  it('defaults priority to null', () => {
+    const result = validateCheckinBody(validBody);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.priority).toBeNull();
+  });
+
+  it('validates needs_categories against allowed codes', () => {
+    const result = validateCheckinBody({
+      ...validBody,
+      needs_categories: ['MEDICAL_EMS', 'FAKE', 'MOBILITY', 123],
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.needs_categories).toEqual(['MEDICAL_EMS', 'MOBILITY']);
+    }
+  });
+
+  it('limits needs_categories to 10 items', () => {
+    const cats = [
+      'MEDICAL_EMS', 'MOBILITY', 'OXYGEN', 'MEDICATION', 'MENTAL_HEALTH',
+      'WATER_FOOD', 'SHELTER', 'INFO', 'REUNIFICATION', 'SAFETY',
+      'MEDICAL_EMS', 'MOBILITY', // duplicates beyond 10
+    ];
+    const result = validateCheckinBody({ ...validBody, needs_categories: cats });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.needs_categories.length).toBeLessThanOrEqual(10);
+    }
+  });
+
+  it('defaults needs_categories to empty array', () => {
+    const result = validateCheckinBody(validBody);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.needs_categories).toEqual([]);
+  });
+});
+
+// ── Check-in Update validation ──
+
+describe('validateCheckinUpdateBody', () => {
+  it('requires checkin_token', () => {
+    const result = validateCheckinUpdateBody({});
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.error).toBe('checkin_token is required');
+      expect(result.error.status).toBe(400);
+    }
+  });
+
+  it('rejects empty checkin_token', () => {
+    const result = validateCheckinUpdateBody({ checkin_token: '   ' });
+    expect(result.ok).toBe(false);
+  });
+
+  it('accepts valid token with no optional fields', () => {
+    const result = validateCheckinUpdateBody({ checkin_token: 'abc123def456' });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.checkin_token).toBe('abc123def456');
+      expect(result.data.priority).toBeUndefined();
+      expect(result.data.needs_categories).toBeUndefined();
+      expect(result.data.status).toBeUndefined();
+      expect(result.data.notes).toBeUndefined();
+    }
+  });
+
+  it('accepts valid priority', () => {
+    const result = validateCheckinUpdateBody({ checkin_token: 'abc', priority: 'IMMEDIATE' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.priority).toBe('IMMEDIATE');
+  });
+
+  it('accepts null priority (clear)', () => {
+    const result = validateCheckinUpdateBody({ checkin_token: 'abc', priority: null });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.priority).toBeNull();
+  });
+
+  it('rejects invalid priority', () => {
+    const result = validateCheckinUpdateBody({ checkin_token: 'abc', priority: 'URGENT' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.error).toContain('priority must be one of');
+  });
+
+  it('validates needs_categories', () => {
+    const result = validateCheckinUpdateBody({
+      checkin_token: 'abc',
+      needs_categories: ['MEDICAL_EMS', 'FAKE'],
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.needs_categories).toEqual(['MEDICAL_EMS']);
+  });
+
+  it('rejects non-array needs_categories', () => {
+    const result = validateCheckinUpdateBody({ checkin_token: 'abc', needs_categories: 'MEDICAL_EMS' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.error).toBe('needs_categories must be an array');
+  });
+
+  it('validates status against VALID_STATUSES', () => {
+    const result = validateCheckinUpdateBody({ checkin_token: 'abc', status: 'LEFT' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.status).toBe('LEFT');
+  });
+
+  it('rejects invalid status', () => {
+    const result = validateCheckinUpdateBody({ checkin_token: 'abc', status: 'INVALID' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.error).toContain('status must be one of');
+  });
+
+  it('truncates notes to 1000 characters', () => {
+    const longNotes = 'N'.repeat(1500);
+    const result = validateCheckinUpdateBody({ checkin_token: 'abc', notes: longNotes });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.notes!.length).toBe(1000);
   });
 });
 

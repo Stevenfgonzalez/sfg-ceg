@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { VALID_COMPLAINT_CODES, VALID_STATUSES, VALID_TRIAGE_TIERS, UUID_REGEX, DEFAULT_INCIDENT_ID } from '@/lib/constants';
+import {
+  VALID_COMPLAINT_CODES, VALID_STATUSES, VALID_TRIAGE_TIERS,
+  UUID_REGEX, DEFAULT_INCIDENT_ID,
+  NEED_CATEGORIES, VALID_NEED_CATEGORY_CODES, VALID_PRIORITIES,
+} from '@/lib/constants';
 
 describe('VALID_COMPLAINT_CODES', () => {
   // EMS page codes
@@ -47,6 +51,11 @@ describe('VALID_STATUSES', () => {
     expect(VALID_STATUSES.includes('SIP')).toBe(true);
     expect(VALID_STATUSES.includes('NEED_EMS')).toBe(true);
   });
+
+  it('contains lifecycle statuses LEFT and MOVED', () => {
+    expect(VALID_STATUSES.includes('LEFT')).toBe(true);
+    expect(VALID_STATUSES.includes('MOVED')).toBe(true);
+  });
 });
 
 describe('VALID_TRIAGE_TIERS', () => {
@@ -75,5 +84,43 @@ describe('DEFAULT_INCIDENT_ID', () => {
 
   it('is the null UUID', () => {
     expect(DEFAULT_INCIDENT_ID).toBe('00000000-0000-0000-0000-000000000000');
+  });
+});
+
+describe('NEED_CATEGORIES', () => {
+  it('has 10 categories', () => {
+    expect(NEED_CATEGORIES).toHaveLength(10);
+  });
+
+  it('each category has code, label, and needs_ems', () => {
+    for (const cat of NEED_CATEGORIES) {
+      expect(typeof cat.code).toBe('string');
+      expect(typeof cat.label).toBe('string');
+      expect(typeof cat.needs_ems).toBe('boolean');
+    }
+  });
+
+  it('has the correct EMS-critical categories', () => {
+    const emsCritical = NEED_CATEGORIES.filter(c => c.needs_ems).map(c => c.code);
+    expect(emsCritical).toEqual(expect.arrayContaining(['MEDICAL_EMS', 'OXYGEN', 'SAFETY']));
+    expect(emsCritical).toHaveLength(3);
+  });
+
+  it('VALID_NEED_CATEGORY_CODES matches NEED_CATEGORIES', () => {
+    expect(VALID_NEED_CATEGORY_CODES.size).toBe(NEED_CATEGORIES.length);
+    for (const cat of NEED_CATEGORIES) {
+      expect(VALID_NEED_CATEGORY_CODES.has(cat.code)).toBe(true);
+    }
+  });
+
+  it('rejects invalid codes', () => {
+    expect(VALID_NEED_CATEGORY_CODES.has('FAKE')).toBe(false);
+    expect(VALID_NEED_CATEGORY_CODES.has('')).toBe(false);
+  });
+});
+
+describe('VALID_PRIORITIES', () => {
+  it('contains IMMEDIATE and CAN_WAIT', () => {
+    expect(VALID_PRIORITIES).toEqual(['IMMEDIATE', 'CAN_WAIT']);
   });
 });

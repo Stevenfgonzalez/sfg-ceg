@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createBrowserClient } from '@/lib/supabase';
 import { hashPhone, phoneLast4, getHashVersion } from '@/lib/phone';
 import { checkGeneralRateLimit } from '@/lib/rate-limit';
-import { VALID_STATUSES, UUID_REGEX } from '@/lib/constants';
+import { NEED_CATEGORIES } from '@/lib/constants';
+import { validateCheckinBody } from '@/lib/api-validation';
 import { log } from '@/lib/logger';
 
 // POST /api/public/checkin
@@ -31,72 +32,53 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { incident_id, full_name, phone, status } = body as {
-    incident_id?: string;
-    full_name?: string;
-    phone?: string;
-    status?: string;
-  };
-
-  // Validate required fields
-  if (!full_name || typeof full_name !== 'string' || full_name.trim().length < 1) {
-    return NextResponse.json({ error: 'Full name is required' }, { status: 400 });
+  // Validate with shared validator
+  const result = validateCheckinBody(body);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error.error }, { status: result.error.status });
   }
-
-  if (!status || !VALID_STATUSES.includes(status as typeof VALID_STATUSES[number])) {
-    return NextResponse.json(
-      { error: `Status must be one of: ${VALID_STATUSES.join(', ')}` },
-      { status: 400 }
-    );
-  }
-
-  if (!incident_id || !UUID_REGEX.test(incident_id)) {
-    return NextResponse.json({ error: 'Valid incident ID required' }, { status: 400 });
-  }
+  const data = result.data;
 
   try {
     const supabase = createBrowserClient();
 
-    // Build insert row — hash phone, never store raw
-    // Server-side length truncation for all text fields
-    const safeName = (full_name as string).trim().slice(0, 200);
-    const safeAssembly = typeof body.assembly_point === 'string' ? body.assembly_point.slice(0, 200) : null;
-    const safeZone = typeof body.zone === 'string' ? body.zone.slice(0, 200) : null;
-    const safeEmsNotes = typeof body.ems_notes === 'string' ? body.ems_notes.slice(0, 1000) : null;
-    const safeDepartment = typeof body.department === 'string' ? body.department.slice(0, 500) : null;
-    const safeRole = typeof body.role === 'string' ? body.role.slice(0, 500) : null;
-    const safeNotes = typeof body.notes === 'string' ? body.notes.slice(0, 1000) : null;
-    const safeContactName = typeof body.contact_name === 'string' ? body.contact_name.trim().slice(0, 500) || null : null;
-    const safeDependentNames = typeof body.dependent_names === 'string' ? body.dependent_names.slice(0, 500) : null;
+    // Generate update token (12 hex chars from UUID)
+    const checkinToken = crypto.randomUUID().slice(0, 12);
 
     const row: Record<string, unknown> = {
-      incident_id,
-      full_name: safeName,
-      status,
-      assembly_point: safeAssembly,
-      zone: safeZone,
-      party_size: typeof body.party_size === 'number' ? Math.max(1, Math.min(50, body.party_size)) : 1,
-      pet_count: typeof body.pet_count === 'number' ? Math.max(0, Math.min(20, body.pet_count)) : 0,
-      has_dependents: body.has_dependents ?? false,
-      dependent_names: safeDependentNames,
-      needs_transport: body.needs_transport ?? false,
-      ems_notes: safeEmsNotes,
-      department: safeDepartment,
-      role: safeRole,
-      notes: safeNotes,
-      contact_name: safeContactName,
+      incident_id: data.incident_id,
+      full_name: data.full_name,
+      status: data.status,
+      assembly_point: data.assembly_point,
+      zone: data.zone,
+      party_size: data.party_size,
+      pet_count: data.pet_count,
+      has_dependents: data.has_dependents,
+      dependent_names: data.dependent_names,
+      needs_transport: data.needs_transport,
+      ems_notes: data.ems_notes,
+      department: data.department,
+      role: data.role,
+      notes: data.notes,
+      contact_name: data.contact_name,
+      // Needs assessment fields
+      adult_count: data.adult_count,
+      child_count: data.child_count,
+      priority: data.priority,
+      needs_categories: data.needs_categories,
+      checkin_token: checkinToken,
     };
 
     // GPS location
-    if (typeof body.lat === 'number' && typeof body.lon === 'number') {
-      row.lat = body.lat;
-      row.lon = body.lon;
+    if (data.lat !== undefined && data.lon !== undefined) {
+      row.lat = data.lat;
+      row.lon = data.lon;
     }
 
     // Phone hashing — raw phone NEVER touches the database
-    if (phone && typeof phone === 'string' && phone.replace(/\D/g, '').length >= 10) {
-      row.phone_hash = hashPhone(phone);
-      row.phone_last4 = phoneLast4(phone);
+    if (data.phone && data.phone.replace(/\D/g, '').length >= 10) {
+      row.phone_hash = hashPhone(data.phone);
+      row.phone_last4 = phoneLast4(data.phone);
       row.phone_hash_v = getHashVersion();
     }
 
@@ -106,16 +88,25 @@ export async function POST(request: NextRequest) {
       row.event_id = eventId;
       const { data: existing } = await supabase
         .from('checkins')
-        .select('id')
+        .select('id, checkin_token')
         .eq('event_id', eventId)
         .limit(1)
         .maybeSingle();
       if (existing) {
-        return NextResponse.json({ success: true, message: 'Check-in already recorded (dedup)', deduplicated: true });
+        return NextResponse.json({
+          success: true,
+          message: 'Check-in already recorded (dedup)',
+          deduplicated: true,
+          checkin_token: existing.checkin_token,
+        });
       }
     }
 
-    const { error } = await supabase.from('checkins').insert(row);
+    const { data: inserted, error } = await supabase
+      .from('checkins')
+      .insert(row)
+      .select('id')
+      .single();
 
     if (error) {
       if (error.code === '42501' || error.message.includes('policy')) {
@@ -124,16 +115,55 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      log({ level: 'error', event: 'checkin_failed', route: '/api/public/checkin', incident_id, error: error.message });
+      log({ level: 'error', event: 'checkin_failed', route: '/api/public/checkin', incident_id: data.incident_id, error: error.message });
       return NextResponse.json({ error: 'Check-in failed. Please try again.' }, { status: 500 });
     }
 
-    log({ level: 'info', event: 'checkin_created', route: '/api/public/checkin', incident_id, duration_ms: Date.now() - start, meta: { status, party_size: row.party_size } });
-    return NextResponse.json({ success: true, message: 'Check-in recorded' }, {
+    // Auto-create help_request if priority is IMMEDIATE or needs include EMS-critical categories
+    const emsCriticalCodes: Set<string> = new Set(
+      NEED_CATEGORIES.filter(c => c.needs_ems).map(c => c.code)
+    );
+    const hasEmsCritical = data.needs_categories.some(c => emsCriticalCodes.has(c));
+
+    if (inserted && (data.priority === 'IMMEDIATE' || hasEmsCritical)) {
+      const helpRow: Record<string, unknown> = {
+        incident_id: data.incident_id,
+        complaint_code: hasEmsCritical ? data.needs_categories.find(c => emsCriticalCodes.has(c))! : 'OTHER',
+        complaint_label: hasEmsCritical
+          ? NEED_CATEGORIES.find(c => data.needs_categories.includes(c.code) && c.needs_ems)?.label ?? 'Needs assessment escalation'
+          : 'Priority: IMMEDIATE',
+        triage_tier: hasEmsCritical ? 2 : 3,
+        dispatch_note: `Auto-created from check-in. Priority: ${data.priority ?? 'none'}. Needs: ${data.needs_categories.join(', ') || 'none'}`,
+        caller_name: data.full_name,
+        party_size: data.party_size,
+        assembly_point: data.assembly_point,
+        status: 'NEW',
+        checkin_id: inserted.id,
+      };
+
+      if (data.lat !== undefined && data.lon !== undefined) {
+        helpRow.lat = data.lat;
+        helpRow.lon = data.lon;
+      }
+
+      if (data.phone && data.phone.replace(/\D/g, '').length >= 10) {
+        helpRow.phone_hash = hashPhone(data.phone);
+        helpRow.phone_last4 = phoneLast4(data.phone);
+        helpRow.phone_hash_v = getHashVersion();
+      }
+
+      const { error: helpError } = await supabase.from('help_requests').insert(helpRow);
+      if (helpError) {
+        log({ level: 'warn', event: 'checkin_help_link_failed', route: '/api/public/checkin', incident_id: data.incident_id, error: helpError.message });
+      }
+    }
+
+    log({ level: 'info', event: 'checkin_created', route: '/api/public/checkin', incident_id: data.incident_id, duration_ms: Date.now() - start, meta: { status: data.status, party_size: data.party_size, priority: data.priority, needs_count: data.needs_categories.length } });
+    return NextResponse.json({ success: true, message: 'Check-in recorded', checkin_token: checkinToken }, {
       headers: { 'X-RateLimit-Remaining': String(remaining) },
     });
   } catch (err) {
-    log({ level: 'error', event: 'checkin_error', route: '/api/public/checkin', incident_id, error: err instanceof Error ? err.message : 'Unknown error' });
+    log({ level: 'error', event: 'checkin_error', route: '/api/public/checkin', incident_id: data.incident_id, error: err instanceof Error ? err.message : 'Unknown error' });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

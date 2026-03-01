@@ -5,6 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import { findNearestZones, ZONE_TYPE_ICONS, type SafeZone } from '../data/safe-zones';
 import { saveToOutbox } from '@/lib/offline-store';
 import { trySyncNow } from '@/lib/outbox-sync';
+import { NEED_CATEGORIES } from '@/lib/constants';
+import type { NeedCategoryCode, Priority } from '@/lib/constants';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -19,7 +21,10 @@ type StatusKey =
   | 'NEED_MEDICAL'
   | 'LOOKING_FOR_SOMEONE';
 
-type Step = 'status' | 'details' | 'submitting' | 'done' | 'error';
+type Step = 'status' | 'needs' | 'details' | 'submitting' | 'done' | 'error';
+
+// Statuses that require the needs assessment step
+const NEEDS_STATUSES: StatusKey[] = ['NEED_HELP', 'NEED_MEDICAL', 'SHELTERING_HERE', 'LOOKING_FOR_SOMEONE'];
 
 interface StatusConfig {
   label: string;
@@ -125,7 +130,8 @@ function CheckInFlow() {
   // Form state
   const [step, setStep] = useState<Step>('status');
   const [status, setStatus] = useState<StatusKey | null>(null);
-  const [partySize, setPartySize] = useState(1);
+  const [adultCount, setAdultCount] = useState(1);
+  const [childCount, setChildCount] = useState(0);
   const [petCount, setPetCount] = useState(0);
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
@@ -134,6 +140,11 @@ function CheckInFlow() {
   const [notes, setNotes] = useState('');
   const [needsTransport, setNeedsTransport] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  // Needs assessment state
+  const [priority, setPriority] = useState<Priority | null>(null);
+  const [needsCategories, setNeedsCategories] = useState<NeedCategoryCode[]>([]);
+  const [checkinToken, setCheckinToken] = useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   // GPS state
   const [gps, setGps] = useState<{ lat: number; lon: number } | null>(null);
@@ -158,7 +169,7 @@ function CheckInFlow() {
   useEffect(() => {
     if (presetStatus && presetStatus in STATUS_OPTIONS) {
       setStatus(presetStatus);
-      setStep('details');
+      setStep(NEEDS_STATUSES.includes(presetStatus) ? 'needs' : 'details');
     }
   }, [presetStatus]);
 
@@ -194,15 +205,20 @@ function CheckInFlow() {
     setStep('submitting');
 
     try {
+      const partySize = Math.max(1, adultCount + childCount);
       const body: Record<string, unknown> = {
         incident_id: hasValidIncident ? incidentId : '00000000-0000-0000-0000-000000000000',
         full_name: nameToSubmit,
         status,
         assembly_point: assemblyPoint || undefined,
         party_size: partySize,
+        adult_count: adultCount,
+        child_count: childCount,
         pet_count: petCount,
         needs_transport: needsTransport,
         contact_name: contactName.trim() || undefined,
+        priority,
+        needs_categories: needsCategories,
       };
 
       if (phone.trim()) body.phone = phone.trim();
@@ -225,11 +241,50 @@ function CheckInFlow() {
     }
   }
 
+  // Update needs — uses PATCH endpoint with checkin_token
+  async function handleUpdateNeeds() {
+    if (!checkinToken) return;
+    setIsUpdating(true);
+    try {
+      const res = await fetch('/api/public/checkin/update', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          checkin_token: checkinToken,
+          priority,
+          needs_categories: needsCategories,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Update failed');
+      }
+      setStep('done');
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Update failed');
+      setStep('error');
+    } finally {
+      setIsUpdating(false);
+    }
+  }
+
+  // Toggle a needs category
+  function toggleNeed(code: NeedCategoryCode) {
+    setNeedsCategories(prev =>
+      prev.includes(code)
+        ? prev.filter(c => c !== code)
+        : prev.length < 10
+          ? [...prev, code]
+          : prev
+    );
+  }
+
   // Reset form for "check in another"
   function resetForm() {
     setStep('status');
     setStatus(null);
-    setPartySize(1);
+    setAdultCount(1);
+    setChildCount(0);
     setPetCount(0);
     setFullName('');
     setPhone('');
@@ -238,6 +293,9 @@ function CheckInFlow() {
     setNotes('');
     setNeedsTransport(false);
     setErrorMsg('');
+    setPriority(null);
+    setNeedsCategories([]);
+    setCheckinToken(null);
   }
 
   // ─── STEP 1: Status Selection ───
@@ -246,20 +304,20 @@ function CheckInFlow() {
       <Shell>
         <Header subtitle={assemblyPoint ? `Assembly Point: ${assemblyPoint}` : undefined} />
 
-        {/* Party size + pets (before status — BRASS pattern) */}
+        {/* Adult/child split + pets (before status) */}
         <div className="px-4 pb-4 space-y-4">
-          {/* Party size */}
+          {/* Adults */}
           <div>
             <label className="block text-sm font-semibold text-slate-400 mb-2">
-              How many people?
+              Adults
             </label>
             <div className="flex gap-2">
               {[1, 2, 3, 4, 5].map((n) => (
                 <button
                   key={n}
-                  onClick={() => setPartySize(n === 5 && partySize >= 5 ? partySize : n)}
+                  onClick={() => setAdultCount(n === 5 && adultCount >= 5 ? adultCount : n)}
                   className={`flex-1 py-3 rounded-lg text-lg font-bold border-2 transition-colors ${
-                    partySize === n || (n === 5 && partySize >= 5)
+                    adultCount === n || (n === 5 && adultCount >= 5)
                       ? 'bg-blue-600 border-blue-400 text-white'
                       : 'bg-slate-800 border-slate-700 text-white'
                   }`}
@@ -268,13 +326,45 @@ function CheckInFlow() {
                 </button>
               ))}
             </div>
-            {partySize >= 5 && (
+            {adultCount >= 5 && (
               <input
                 type="number"
-                value={partySize}
-                onChange={(e) => setPartySize(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                value={adultCount}
+                onChange={(e) => setAdultCount(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
                 className="w-full mt-2 px-4 py-3 bg-slate-800 border-2 border-slate-600 rounded-lg text-white text-center text-lg"
                 min={1}
+                max={50}
+              />
+            )}
+          </div>
+
+          {/* Children */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-400 mb-2">
+              Children
+            </label>
+            <div className="flex gap-2">
+              {[0, 1, 2, 3, 4].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setChildCount(n === 4 && childCount >= 4 ? childCount : n)}
+                  className={`flex-1 py-3 rounded-lg text-lg font-bold border-2 transition-colors ${
+                    childCount === n || (n === 4 && childCount >= 4)
+                      ? 'bg-blue-600 border-blue-400 text-white'
+                      : 'bg-slate-800 border-slate-700 text-white'
+                  }`}
+                >
+                  {n === 4 ? '4+' : n}
+                </button>
+              ))}
+            </div>
+            {childCount >= 4 && (
+              <input
+                type="number"
+                value={childCount}
+                onChange={(e) => setChildCount(Math.max(0, Math.min(50, parseInt(e.target.value) || 0)))}
+                className="w-full mt-2 px-4 py-3 bg-slate-800 border-2 border-slate-600 rounded-lg text-white text-center text-lg"
+                min={0}
                 max={50}
               />
             )}
@@ -321,10 +411,11 @@ function CheckInFlow() {
           <div className="space-y-2">
             {(['EVACUATING', 'AT_MUSTER', 'SHELTERING_HERE'] as StatusKey[]).map((key) => {
               const cfg = STATUS_OPTIONS[key];
+              const nextStep = NEEDS_STATUSES.includes(key) ? 'needs' : 'details';
               return (
                 <button
                   key={key}
-                  onClick={() => { setStatus(key); setStep('details'); }}
+                  onClick={() => { setStatus(key); setStep(nextStep); }}
                   className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-white text-left border-2 transition-colors ${cfg.bg} ${cfg.border}`}
                 >
                   <span className="text-xl w-8 text-center">{cfg.icon}</span>
@@ -348,7 +439,7 @@ function CheckInFlow() {
                 return (
                   <button
                     key={key}
-                    onClick={() => { setStatus(key); setStep('details'); }}
+                    onClick={() => { setStatus(key); setStep('needs'); }}
                     className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-white text-left border-2 transition-colors ${cfg.bg} ${cfg.border}`}
                   >
                     <span className="text-xl w-8 text-center">{cfg.icon}</span>
@@ -380,7 +471,108 @@ function CheckInFlow() {
     );
   }
 
-  // ─── STEP 2: Details ───
+  // ─── STEP 2: Needs Assessment ───
+  if (step === 'needs') {
+    const cfg = STATUS_OPTIONS[status!];
+    return (
+      <Shell>
+        <Header subtitle={assemblyPoint ? `Assembly Point: ${assemblyPoint}` : undefined} />
+        <div className="px-4">
+          <button
+            onClick={() => setStep('status')}
+            className="text-slate-400 text-sm mb-3 flex items-center gap-1"
+          >
+            ← Change status
+          </button>
+
+          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-bold text-white mb-4 ${cfg.bg.split(' ')[0]}`}>
+            {cfg.icon} {cfg.label}
+          </div>
+
+          {/* Priority */}
+          <div className="mb-6">
+            <p className="text-sm font-semibold text-slate-300 mb-3">How urgent?</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setPriority('IMMEDIATE')}
+                className={`py-4 rounded-xl text-center font-bold border-2 transition-colors ${
+                  priority === 'IMMEDIATE'
+                    ? 'bg-red-600 border-red-400 text-white'
+                    : 'bg-slate-800 border-slate-700 text-slate-300'
+                }`}
+              >
+                <span className="text-lg block mb-1">I need help now</span>
+                <span className="text-xs opacity-70">IMMEDIATE</span>
+              </button>
+              <button
+                onClick={() => setPriority('CAN_WAIT')}
+                className={`py-4 rounded-xl text-center font-bold border-2 transition-colors ${
+                  priority === 'CAN_WAIT'
+                    ? 'bg-amber-600 border-amber-400 text-white'
+                    : 'bg-slate-800 border-slate-700 text-slate-300'
+                }`}
+              >
+                <span className="text-lg block mb-1">I can wait</span>
+                <span className="text-xs opacity-70">CAN WAIT</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Needs categories checklist */}
+          <div className="mb-6">
+            <p className="text-sm font-semibold text-slate-300 mb-3">What do you need? (select all that apply)</p>
+            <div className="space-y-2">
+              {NEED_CATEGORIES.map((cat) => {
+                const selected = needsCategories.includes(cat.code);
+                return (
+                  <button
+                    key={cat.code}
+                    onClick={() => toggleNeed(cat.code)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left border-2 transition-colors ${
+                      selected
+                        ? 'bg-blue-600/20 border-blue-500 text-white'
+                        : 'bg-slate-800 border-slate-700 text-slate-300'
+                    }`}
+                  >
+                    <span className={`w-5 h-5 rounded border-2 flex items-center justify-center text-xs ${
+                      selected ? 'bg-blue-600 border-blue-400' : 'border-slate-600'
+                    }`}>
+                      {selected && '✓'}
+                    </span>
+                    <span className="text-sm">{cat.label}</span>
+                    {cat.needs_ems && (
+                      <span className="ml-auto text-xs text-red-400 font-semibold">EMS</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Continue or Update */}
+          {checkinToken ? (
+            <button
+              onClick={handleUpdateNeeds}
+              disabled={isUpdating}
+              className="w-full py-4 rounded-xl text-lg font-bold text-white bg-amber-600 active:bg-amber-700 transition-colors disabled:opacity-50"
+            >
+              {isUpdating ? 'Updating...' : 'Update My Needs'}
+            </button>
+          ) : (
+            <button
+              onClick={() => setStep('details')}
+              className="w-full py-4 rounded-xl text-lg font-bold text-white bg-blue-600 active:bg-blue-700 transition-colors"
+            >
+              Continue
+            </button>
+          )}
+        </div>
+        <div className="h-8" />
+      </Shell>
+    );
+  }
+
+  // ─── STEP 3: Details ───
   if (step === 'details') {
     const cfg = STATUS_OPTIONS[status!];
     const isHelpStatus = cfg.requiresContact;
@@ -441,15 +633,30 @@ function CheckInFlow() {
               />
             </FormField>
 
-            {/* Summary: party + pets */}
-            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+            {/* Summary: adults + children + pets */}
+            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 space-y-1">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-400">Party</span>
                 <span className="font-bold">
-                  {partySize} {partySize === 1 ? 'person' : 'people'}
+                  {adultCount} {adultCount === 1 ? 'adult' : 'adults'}
+                  {childCount > 0 && `, ${childCount} ${childCount === 1 ? 'child' : 'children'}`}
                   {petCount > 0 && ` + ${petCount} ${petCount === 1 ? 'pet' : 'pets'}`}
                 </span>
               </div>
+              {priority && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-400">Priority</span>
+                  <span className={`font-bold ${priority === 'IMMEDIATE' ? 'text-red-400' : 'text-amber-400'}`}>
+                    {priority}
+                  </span>
+                </div>
+              )}
+              {needsCategories.length > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-400">Needs</span>
+                  <span className="font-bold text-blue-400">{needsCategories.length} selected</span>
+                </div>
+              )}
             </div>
 
             {/* GPS Location */}
@@ -556,6 +763,7 @@ function CheckInFlow() {
   // ─── DONE ───
   if (step === 'done') {
     const cfg = STATUS_OPTIONS[status!];
+    const partySize = Math.max(1, adultCount + childCount);
     const nearestZones = gps ? findNearestZones(gps.lat, gps.lon).slice(0, 2) : [];
 
     return (
@@ -568,13 +776,28 @@ function CheckInFlow() {
           <h2 className="text-2xl font-bold mb-2">Checked In</h2>
 
           <p className="text-slate-400 mb-1">
-            {partySize} {partySize === 1 ? 'person' : 'people'}
+            {adultCount} {adultCount === 1 ? 'adult' : 'adults'}
+            {childCount > 0 && `, ${childCount} ${childCount === 1 ? 'child' : 'children'}`}
             {petCount > 0 && ` + ${petCount} ${petCount === 1 ? 'pet' : 'pets'}`}
           </p>
 
-          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-bold text-white mb-6 ${cfg.bg.split(' ')[0]}`}>
+          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-bold text-white mb-4 ${cfg.bg.split(' ')[0]}`}>
             {cfg.label}
           </div>
+
+          {priority && (
+            <p className={`text-sm font-bold mb-2 ${priority === 'IMMEDIATE' ? 'text-red-400' : 'text-amber-400'}`}>
+              Priority: {priority}
+            </p>
+          )}
+
+          {needsCategories.length > 0 && (
+            <p className="text-sm text-slate-400 mb-4">
+              Needs: {needsCategories.map(c =>
+                NEED_CATEGORIES.find(n => n.code === c)?.label ?? c
+              ).join(', ')}
+            </p>
+          )}
 
           {assemblyPoint && (
             <p className="text-sm text-slate-500 mb-6">Assembly Point: {assemblyPoint}</p>
@@ -590,6 +813,15 @@ function CheckInFlow() {
           </p>
 
           <div className="space-y-3">
+            {/* Update My Needs — only for statuses that had needs assessment */}
+            {NEEDS_STATUSES.includes(status!) && checkinToken && (
+              <button
+                onClick={() => setStep('needs')}
+                className="w-full py-3.5 rounded-xl bg-amber-600 border-2 border-amber-500 text-white font-semibold active:bg-amber-700 transition-colors"
+              >
+                Update My Needs
+              </button>
+            )}
             <button
               onClick={resetForm}
               className="w-full py-3.5 rounded-xl bg-slate-800 border-2 border-slate-700 text-white font-semibold active:bg-slate-700 transition-colors"
