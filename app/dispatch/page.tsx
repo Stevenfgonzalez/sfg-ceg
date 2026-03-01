@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { track } from '@vercel/analytics';
 
 // ── Types ──
 
@@ -79,6 +80,7 @@ function PinGate({ onAuth }: { onAuth: () => void }) {
       });
 
       if (res.ok) {
+        track('dispatch_auth_success');
         onAuth();
       } else {
         const data = await res.json().catch(() => ({}));

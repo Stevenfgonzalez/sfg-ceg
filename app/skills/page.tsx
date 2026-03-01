@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { track } from '@vercel/analytics';
 
 // ── SKILL DATA ──
 // Source: CEG Skill Cards V2.pptx
@@ -250,7 +251,7 @@ function SkillsPage() {
         {SKILLS.map((skill) => (
           <button
             key={skill.id}
-            onClick={() => setSelectedSkill(skill)}
+            onClick={() => { track('skill_selected', { skill: skill.id }); setSelectedSkill(skill); }}
             className="w-full flex items-center gap-4 bg-slate-800 rounded-xl px-4 py-4 border border-slate-700 active:bg-slate-700 transition-colors text-left"
           >
             <div className="w-12 h-12 rounded-xl bg-slate-700 flex items-center justify-center text-2xl shrink-0">
