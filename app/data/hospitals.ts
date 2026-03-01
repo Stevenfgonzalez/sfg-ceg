@@ -306,8 +306,8 @@ export const TRAUMA_LEVEL_COLORS: Record<string, string> = {
 export const CAPABILITY_LABELS: Record<string, string> = {
   burn: 'Burn Center',
   peds: 'Pediatric',
-  stroke: 'Stroke',
-  stemi: 'STEMI',
+  stroke: 'Stroke (TIA/CVA)',
+  stemi: 'STEMI (Heart Center)',
   cardiac: 'Cardiac',
   helipad: 'Helipad',
   laborDelivery: 'Labor & Delivery',

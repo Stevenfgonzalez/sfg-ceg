@@ -18,6 +18,8 @@ export default function HospitalsPage() {
   const [filterPediatric, setFilterPediatric] = useState(false);
   const [filterBurn, setFilterBurn] = useState(false);
   const [filterLD, setFilterLD] = useState(false);
+  const [filterStroke, setFilterStroke] = useState(false);
+  const [filterSTEMI, setFilterSTEMI] = useState(false);
 
   const handleFindNearest = useCallback(() => {
     if (!navigator.geolocation) {
@@ -44,6 +46,8 @@ export default function HospitalsPage() {
     if (filterPediatric && !h.pediatric) return false;
     if (filterBurn && !h.burn) return false;
     if (filterLD && !h.laborDelivery) return false;
+    if (filterStroke && !h.stroke) return false;
+    if (filterSTEMI && !h.stemi) return false;
     return true;
   });
 
@@ -92,7 +96,7 @@ export default function HospitalsPage() {
           )}
         </button>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <button
             onClick={() => { logEvent('filter_toggle', { filter: 'trauma', on: !filterTrauma }); setFilterTrauma(!filterTrauma); }}
             className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
@@ -132,6 +136,26 @@ export default function HospitalsPage() {
             }`}
           >
             Labor &amp; Delivery
+          </button>
+          <button
+            onClick={() => { logEvent('filter_toggle', { filter: 'stroke', on: !filterStroke }); setFilterStroke(!filterStroke); }}
+            className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
+              filterStroke
+                ? 'bg-purple-700 border-purple-500 text-white'
+                : 'bg-slate-800 border-slate-700 text-slate-300'
+            }`}
+          >
+            Stroke
+          </button>
+          <button
+            onClick={() => { logEvent('filter_toggle', { filter: 'stemi', on: !filterSTEMI }); setFilterSTEMI(!filterSTEMI); }}
+            className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
+              filterSTEMI
+                ? 'bg-rose-700 border-rose-500 text-white'
+                : 'bg-slate-800 border-slate-700 text-slate-300'
+            }`}
+          >
+            STEMI
           </button>
         </div>
       </div>
