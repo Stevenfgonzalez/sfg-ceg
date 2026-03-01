@@ -145,6 +145,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Help request failed. Please call 911.' }, { status: 500 });
     }
 
+    // Fire alert for Tier 1 critical requests
+    if (triage_tier === 1) {
+      const { fireAlert } = await import('@/lib/alerting');
+      fireAlert({
+        type: 'help_request',
+        triage_tier,
+        complaint_code,
+        complaint_label: safeComplaintLabel,
+        caller_name: safeCallerName ?? undefined,
+        party_size: row.party_size as number,
+        assembly_point: safeAssemblyPoint,
+        lat: row.lat as number | undefined,
+        lon: row.lon as number | undefined,
+        dispatch_note: safeDispatchNote ?? undefined,
+      });
+    }
+
     log({ level: 'info', event: 'help_created', route: '/api/public/help', incident_id, duration_ms: Date.now() - start, meta: { complaint_code, triage_tier } });
     return NextResponse.json({ success: true, triage_tier }, {
       headers: { 'X-RateLimit-Remaining': String(remaining) },

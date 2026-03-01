@@ -156,6 +156,19 @@ export async function POST(request: NextRequest) {
       if (helpError) {
         log({ level: 'warn', event: 'checkin_help_link_failed', route: '/api/public/checkin', incident_id: data.incident_id, error: helpError.message });
       }
+
+      // Fire alert for IMMEDIATE priority check-ins
+      const { fireAlert } = await import('@/lib/alerting');
+      fireAlert({
+        type: 'checkin',
+        priority: data.priority ?? undefined,
+        full_name: data.full_name,
+        party_size: data.party_size,
+        assembly_point: data.assembly_point ?? undefined,
+        lat: data.lat,
+        lon: data.lon,
+        complaint_label: helpRow.complaint_label as string,
+      });
     }
 
     log({ level: 'info', event: 'checkin_created', route: '/api/public/checkin', incident_id: data.incident_id, duration_ms: Date.now() - start, meta: { status: data.status, party_size: data.party_size, priority: data.priority, needs_count: data.needs_categories.length } });
