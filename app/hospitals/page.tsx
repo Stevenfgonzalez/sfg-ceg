@@ -15,6 +15,8 @@ export default function HospitalsPage() {
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'loading' | 'done' | 'denied'>('idle');
   const [filterTrauma, setFilterTrauma] = useState(false);
   const [filterPediatric, setFilterPediatric] = useState(false);
+  const [filterBurn, setFilterBurn] = useState(false);
+  const [filterLD, setFilterLD] = useState(false);
 
   const handleFindNearest = useCallback(() => {
     if (!navigator.geolocation) {
@@ -38,6 +40,8 @@ export default function HospitalsPage() {
   const filteredHospitals = hospitals.filter((h) => {
     if (filterTrauma && h.traumaLevel === null) return false;
     if (filterPediatric && !h.pediatric) return false;
+    if (filterBurn && !h.burn) return false;
+    if (filterLD && !h.laborDelivery) return false;
     return true;
   });
 
@@ -86,10 +90,10 @@ export default function HospitalsPage() {
           )}
         </button>
 
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => setFilterTrauma(!filterTrauma)}
-            className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
+            className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
               filterTrauma
                 ? 'bg-red-700 border-red-500 text-white'
                 : 'bg-slate-800 border-slate-700 text-slate-300'
@@ -99,13 +103,33 @@ export default function HospitalsPage() {
           </button>
           <button
             onClick={() => setFilterPediatric(!filterPediatric)}
-            className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
+            className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
               filterPediatric
                 ? 'bg-blue-700 border-blue-500 text-white'
                 : 'bg-slate-800 border-slate-700 text-slate-300'
             }`}
           >
             Pediatric
+          </button>
+          <button
+            onClick={() => setFilterBurn(!filterBurn)}
+            className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
+              filterBurn
+                ? 'bg-orange-700 border-orange-500 text-white'
+                : 'bg-slate-800 border-slate-700 text-slate-300'
+            }`}
+          >
+            Burn Center
+          </button>
+          <button
+            onClick={() => setFilterLD(!filterLD)}
+            className={`rounded-lg px-3 py-2 text-sm font-medium border transition-colors ${
+              filterLD
+                ? 'bg-pink-700 border-pink-500 text-white'
+                : 'bg-slate-800 border-slate-700 text-slate-300'
+            }`}
+          >
+            Labor &amp; Delivery
           </button>
         </div>
       </div>
@@ -142,6 +166,7 @@ function HospitalCard({ hospital }: { hospital: Hospital & { distance?: number }
   if (hospital.capabilities.includes('cardiac') && !hospital.burn && !hospital.stemi) {
     pills.push({ key: 'cardiac', label: CAPABILITY_LABELS.cardiac });
   }
+  if (hospital.laborDelivery) pills.push({ key: 'laborDelivery', label: CAPABILITY_LABELS.laborDelivery });
   if (hospital.helipad) pills.push({ key: 'helipad', label: CAPABILITY_LABELS.helipad });
 
   return (

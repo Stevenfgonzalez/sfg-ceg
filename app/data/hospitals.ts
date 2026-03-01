@@ -24,6 +24,7 @@ export interface Hospital {
   burn: boolean;
   stroke: boolean;
   stemi: boolean;
+  laborDelivery: boolean;
   capabilities: string[];
   distance?: number;
 }
@@ -46,6 +47,7 @@ export const HOSPITALS: Hospital[] = [
     burn: true,
     stroke: true,
     stemi: true,
+    laborDelivery: true,
   },
   {
     id: 'cedars-sinai',
@@ -63,6 +65,7 @@ export const HOSPITALS: Hospital[] = [
     burn: false,
     stroke: true,
     stemi: true,
+    laborDelivery: true,
   },
   {
     id: 'lac-usc',
@@ -80,6 +83,7 @@ export const HOSPITALS: Hospital[] = [
     burn: true,
     stroke: true,
     stemi: true,
+    laborDelivery: true,
   },
   {
     id: 'harbor-ucla',
@@ -97,6 +101,7 @@ export const HOSPITALS: Hospital[] = [
     burn: true,
     stroke: true,
     stemi: true,
+    laborDelivery: true,
   },
   {
     id: 'childrens-la',
@@ -114,6 +119,7 @@ export const HOSPITALS: Hospital[] = [
     burn: true,
     stroke: false,
     stemi: false,
+    laborDelivery: false,
   },
 
   // ── LEVEL 2 TRAUMA CENTERS ──
@@ -133,6 +139,7 @@ export const HOSPITALS: Hospital[] = [
     burn: false,
     stroke: true,
     stemi: true,
+    laborDelivery: true,
   },
   {
     id: 'northridge',
@@ -150,6 +157,7 @@ export const HOSPITALS: Hospital[] = [
     burn: false,
     stroke: true,
     stemi: true,
+    laborDelivery: true,
   },
   {
     id: 'providence-st-johns',
@@ -167,6 +175,7 @@ export const HOSPITALS: Hospital[] = [
     burn: false,
     stroke: true,
     stemi: true,
+    laborDelivery: true,
   },
   {
     id: 'los-robles',
@@ -184,6 +193,7 @@ export const HOSPITALS: Hospital[] = [
     burn: false,
     stroke: true,
     stemi: true,
+    laborDelivery: true,
   },
   {
     id: 'ventura-county-mc',
@@ -201,6 +211,7 @@ export const HOSPITALS: Hospital[] = [
     burn: false,
     stroke: true,
     stemi: false,
+    laborDelivery: true,
   },
 
   // ── OTHER MAJOR ERs ──
@@ -220,6 +231,7 @@ export const HOSPITALS: Hospital[] = [
     burn: false,
     stroke: true,
     stemi: true,
+    laborDelivery: true,
   },
   {
     id: 'providence-smmc',
@@ -237,6 +249,7 @@ export const HOSPITALS: Hospital[] = [
     burn: false,
     stroke: true,
     stemi: true,
+    laborDelivery: false,
   },
   {
     id: 'torrance-memorial',
@@ -254,6 +267,7 @@ export const HOSPITALS: Hospital[] = [
     burn: false,
     stroke: true,
     stemi: true,
+    laborDelivery: true,
   },
   {
     id: 'west-hills',
@@ -271,6 +285,7 @@ export const HOSPITALS: Hospital[] = [
     burn: false,
     stroke: true,
     stemi: true,
+    laborDelivery: false,
   },
 ];
 
@@ -295,6 +310,7 @@ export const CAPABILITY_LABELS: Record<string, string> = {
   stemi: 'STEMI',
   cardiac: 'Cardiac',
   helipad: 'Helipad',
+  laborDelivery: 'Labor & Delivery',
 };
 
 /**
