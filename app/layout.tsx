@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ServiceWorkerRegistration } from "./sw-register";
+import DegradedBanner from "@/components/DegradedBanner";
 
 export const metadata: Metadata = {
   title: "CEG | Community Emergency Guide",
@@ -30,6 +31,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
+        <DegradedBanner />
         {children}
         <ServiceWorkerRegistration />
       </body>

@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { submitWithFallback } from '@/lib/offline-queue';
 import { DEFAULT_INCIDENT_ID } from '@/lib/constants';
+import { saveToOutbox } from '@/lib/offline-store';
+import { trySyncNow } from '@/lib/outbox-sync';
 
 export default function ShelterPage() {
   const [gps, setGps] = useState<{ lat: number; lon: number } | null>(null);
@@ -11,7 +12,6 @@ export default function ShelterPage() {
   const [partySize, setPartySize] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [queued, setQueued] = useState(false);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -34,19 +34,21 @@ export default function ShelterPage() {
     if (!hasLocation || submitting) return;
     setSubmitting(true);
 
-    const result = await submitWithFallback('/api/public/checkin', {
-      incident_id: DEFAULT_INCIDENT_ID,
-      full_name: 'Shelter-in-Place',
-      status: 'SHELTERING_HERE',
-      party_size: partySize,
-      lat: gps?.lat,
-      lon: gps?.lon,
-      notes: manualAddress ? `Address: ${manualAddress}` : undefined,
-    });
-
-    if (!result.online) {
-      setQueued(true);
+    try {
+      await saveToOutbox('shelter', {
+        incident_id: DEFAULT_INCIDENT_ID,
+        full_name: 'Shelter-in-Place',
+        status: 'SHELTERING_HERE',
+        party_size: partySize,
+        lat: gps?.lat,
+        lon: gps?.lon,
+        notes: manualAddress ? `Address: ${manualAddress}` : undefined,
+      });
+      trySyncNow();
+    } catch {
+      // IndexedDB failure — still show success
     }
+
     setSubmitted(true);
     setSubmitting(false);
   };
@@ -61,12 +63,7 @@ export default function ShelterPage() {
 
         <div className="px-4 pt-12 text-center space-y-4">
           <div className="text-6xl">🏠</div>
-          <h2 className="text-2xl font-extrabold">{queued ? 'Location Queued' : 'Location Shared'}</h2>
-          {queued && (
-            <p className="text-amber-300 text-sm font-semibold">
-              You appear to be offline. Your location will be sent automatically when connectivity returns.
-            </p>
-          )}
+          <h2 className="text-2xl font-extrabold">Location Shared</h2>
           <p className="text-slate-300">
             Responders can see you&apos;re sheltering in place.
             <br />

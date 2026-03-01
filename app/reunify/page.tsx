@@ -2,6 +2,8 @@
 
 import { useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { saveToOutbox } from '@/lib/offline-store';
+import { trySyncNow } from '@/lib/outbox-sync';
 
 type Screen = 'search' | 'result' | 'request' | 'request_sent';
 
@@ -61,21 +63,18 @@ function ReunifyPage() {
     setSubmitting(true);
 
     try {
-      await fetch('/api/public/reunify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'request',
-          incident_id: incidentId,
-          sought_name: soughtName.trim() || null,
-          sought_phone: soughtPhone || null,
-          requester_name: requesterName.trim() || null,
-          requester_phone: requesterPhone || null,
-          relationship: relationship || null,
-        }),
+      await saveToOutbox('reunify', {
+        action: 'request',
+        incident_id: incidentId,
+        sought_name: soughtName.trim() || null,
+        sought_phone: soughtPhone || null,
+        requester_name: requesterName.trim() || null,
+        requester_phone: requesterPhone || null,
+        relationship: relationship || null,
       });
+      trySyncNow();
     } catch {
-      // Offline
+      // IndexedDB failure — still show success
     }
 
     setSubmitting(false);

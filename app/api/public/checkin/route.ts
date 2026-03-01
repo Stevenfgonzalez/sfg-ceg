@@ -100,6 +100,21 @@ export async function POST(request: NextRequest) {
       row.phone_hash_v = getHashVersion();
     }
 
+    // Event ID dedup — if the client sent an event_id, store it and check for duplicates
+    const eventId = typeof body.event_id === 'string' ? body.event_id.slice(0, 100) : null;
+    if (eventId) {
+      row.event_id = eventId;
+      const { data: existing } = await supabase
+        .from('checkins')
+        .select('id')
+        .eq('event_id', eventId)
+        .limit(1)
+        .maybeSingle();
+      if (existing) {
+        return NextResponse.json({ success: true, message: 'Check-in already recorded (dedup)', deduplicated: true });
+      }
+    }
+
     const { error } = await supabase.from('checkins').insert(row);
 
     if (error) {

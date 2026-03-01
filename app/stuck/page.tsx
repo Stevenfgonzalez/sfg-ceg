@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { submitWithFallback } from '@/lib/offline-queue';
 import { DEFAULT_INCIDENT_ID } from '@/lib/constants';
+import { saveToOutbox } from '@/lib/offline-store';
+import { trySyncNow } from '@/lib/outbox-sync';
 
 const STUCK_REASONS = [
   { id: 'traffic', label: 'Stuck in traffic', icon: '🚗' },
@@ -20,7 +21,6 @@ export default function StuckPage() {
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [queued, setQueued] = useState(false);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -44,23 +44,25 @@ export default function StuckPage() {
     if (!canSubmit) return;
     setSubmitting(true);
 
-    const result = await submitWithFallback('/api/public/checkin', {
-      incident_id: DEFAULT_INCIDENT_ID,
-      full_name: 'Evacuation Assistance',
-      status: 'NEED_HELP',
-      party_size: 1,
-      lat: gps?.lat,
-      lon: gps?.lon,
-      notes: [
-        `Reason: ${STUCK_REASONS.find((r) => r.id === reason)?.label || reason}`,
-        notes ? `Details: ${notes}` : null,
-        manualAddress ? `Address: ${manualAddress}` : null,
-      ].filter(Boolean).join(' | '),
-    });
-
-    if (!result.online) {
-      setQueued(true);
+    try {
+      await saveToOutbox('stuck', {
+        incident_id: DEFAULT_INCIDENT_ID,
+        full_name: 'Evacuation Assistance',
+        status: 'NEED_HELP',
+        party_size: 1,
+        lat: gps?.lat,
+        lon: gps?.lon,
+        notes: [
+          `Reason: ${STUCK_REASONS.find((r) => r.id === reason)?.label || reason}`,
+          notes ? `Details: ${notes}` : null,
+          manualAddress ? `Address: ${manualAddress}` : null,
+        ].filter(Boolean).join(' | '),
+      });
+      trySyncNow();
+    } catch {
+      // IndexedDB failure — still show success
     }
+
     setSubmitted(true);
     setSubmitting(false);
   };
@@ -76,13 +78,8 @@ export default function StuckPage() {
         <div className="px-4 pt-12 text-center space-y-4">
           <div className="text-6xl">🚗</div>
           <h2 className="text-2xl font-extrabold text-amber-400">
-            {queued ? 'Request Queued' : 'Help Request Sent'}
+            Help Request Sent
           </h2>
-          {queued && (
-            <p className="text-amber-300 text-sm font-semibold">
-              You appear to be offline. Your request will be sent automatically when connectivity returns.
-            </p>
-          )}
           <p className="text-slate-300">
             Responders know your location. Stay where you are if safe.
           </p>

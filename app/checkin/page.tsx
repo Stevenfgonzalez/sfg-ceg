@@ -3,6 +3,8 @@
 import { Suspense, useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { findNearestZones, ZONE_TYPE_ICONS, type SafeZone } from '../data/safe-zones';
+import { saveToOutbox } from '@/lib/offline-store';
+import { trySyncNow } from '@/lib/outbox-sync';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -177,7 +179,7 @@ function CheckInFlow() {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const hasValidIncident = incidentId && uuidRegex.test(incidentId);
 
-  // Submit
+  // Submit — offline-first: save locally, then sync in background
   async function handleSubmit() {
     if (!status) return;
 
@@ -211,17 +213,11 @@ function CheckInFlow() {
         body.lon = gps.lon;
       }
 
-      const res = await fetch('/api/public/checkin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      // Offline-first: save to local outbox, then try background sync
+      await saveToOutbox('checkin', body);
+      trySyncNow();
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Check-in failed');
-      }
-
+      // Show success immediately — server sync happens in the background
       setStep('done');
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Something went wrong');

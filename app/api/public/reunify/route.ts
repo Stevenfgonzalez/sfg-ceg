@@ -160,6 +160,21 @@ export async function POST(request: NextRequest) {
       row.ip_address = ip;
       row.user_agent = request.headers.get('user-agent') ?? null;
 
+      // Event ID dedup — prevent duplicate submissions from outbox retries
+      const eventId = typeof body.event_id === 'string' ? body.event_id.slice(0, 100) : null;
+      if (eventId) {
+        row.event_id = eventId;
+        const { data: existing } = await supabase
+          .from('reunification_requests')
+          .select('id')
+          .eq('event_id', eventId)
+          .limit(1)
+          .maybeSingle();
+        if (existing) {
+          return NextResponse.json({ success: true, message: 'Request already recorded (dedup)', deduplicated: true });
+        }
+      }
+
       const { error } = await supabase.from('reunification_requests').insert(row);
 
       if (error) {

@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { saveToOutbox } from '@/lib/offline-store';
+import { trySyncNow } from '@/lib/outbox-sync';
 
 // ── COMPLAINT DATA ──
 // Tier is HIDDEN from the user. "The system triages. The patient just describes."
@@ -96,7 +98,7 @@ function HelpPage() {
   const [otherText, setOtherText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const dialTriggered = useRef(false);
+  const [showCallConfirm, setShowCallConfirm] = useState(false);
 
   // Deterministic complaint order for this incident
   const [orderedComplaints] = useState(() => shuffleComplaints(incidentId));
@@ -117,33 +119,30 @@ function HelpPage() {
     );
   }, []);
 
-  // ── SUBMIT ──
+  // ── SUBMIT — offline-first ──
   const submit = useCallback(async (complaint: Complaint, otherDetail?: string) => {
     if (submitting || submitted) return;
     setSubmitting(true);
 
     try {
-      await fetch('/api/public/help', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          incident_id: incidentId,
-          complaint_code: complaint.code,
-          complaint_label: complaint.label,
-          triage_tier: complaint.tier,
-          dispatch_note: complaint.dispatchNote,
-          caller_name: callerName.trim() || null,
-          phone: phone || null,
-          party_size: partySize,
-          assembly_point: assemblyPoint || null,
-          lat: gps?.lat,
-          lon: gps?.lon,
-          manual_address: manualAddress || null,
-          other_text: otherDetail?.slice(0, 200) || null,
-        }),
+      await saveToOutbox('help', {
+        incident_id: incidentId,
+        complaint_code: complaint.code,
+        complaint_label: complaint.label,
+        triage_tier: complaint.tier,
+        dispatch_note: complaint.dispatchNote,
+        caller_name: callerName.trim() || null,
+        phone: phone || null,
+        party_size: partySize,
+        assembly_point: assemblyPoint || null,
+        lat: gps?.lat,
+        lon: gps?.lon,
+        manual_address: manualAddress || null,
+        other_text: otherDetail?.slice(0, 200) || null,
       });
+      trySyncNow();
     } catch {
-      // Will retry or show offline message in future
+      // IndexedDB failure — still show success (data loss is acceptable vs. blocking the user)
     }
 
     setSubmitted(true);
@@ -160,21 +159,13 @@ function HelpPage() {
     }
 
     if (c.tier === 1) {
-      // CRITICAL: Card renders FIRST, then dial.
-      // We write to help_requests even though they're dialing —
+      // CRITICAL: Show confirmation screen with CERT card FIRST.
+      // We write to help_requests even though they may dial —
       // gives IC "Tier 1 triggered from this zone" count.
+      // NO auto-dial. User must confirm before calling 911.
       setScreen('critical');
+      setShowCallConfirm(true);
       submit(c);
-
-      // Double requestAnimationFrame ensures paint before tel: prompt
-      if (!dialTriggered.current) {
-        dialTriggered.current = true;
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            window.location.href = 'tel:911';
-          });
-        });
-      }
     } else if (c.tier === 3) {
       setScreen('guidance');
       submit(c);
@@ -450,7 +441,7 @@ function HelpPage() {
     );
   }
 
-  // ── SCREEN: TIER 1 — CRITICAL (CALL 911) ──
+  // ── SCREEN: TIER 1 — CRITICAL (TWO-STEP 911 CONFIRMATION) ──
   if (screen === 'critical') {
     return (
       <main className="min-h-screen bg-slate-900 text-white">
@@ -459,24 +450,47 @@ function HelpPage() {
           <h1 className="text-lg font-bold text-red-400">Emergency</h1>
         </header>
 
-        {/* CERT Card renders BEFORE anything else — this is the key UX requirement */}
+        {/* Calming confirmation message */}
+        {showCallConfirm && (
+          <div className="mx-4 mt-4 bg-slate-800 rounded-xl border border-slate-600 p-5 text-center space-y-4">
+            <p className="text-lg text-slate-200 leading-relaxed">
+              Your information is ready.
+              <br />
+              When you call 911, read them the card below.
+            </p>
+
+            <a
+              href="tel:911"
+              className="block w-full py-5 rounded-xl bg-red-600 font-bold text-xl active:bg-red-700 transition-colors shadow-lg shadow-red-900/50"
+            >
+              Call 911 Now
+            </a>
+
+            <button
+              onClick={() => setShowCallConfirm(false)}
+              className="text-sm text-slate-400 underline"
+            >
+              I&apos;ll call later / Someone is already calling
+            </button>
+          </div>
+        )}
+
+        {/* CERT Card renders on screen — the key UX requirement */}
         <div className="pt-4">
           <CertCard />
         </div>
 
-        <div className="px-4 text-center space-y-4">
-          <div className="text-6xl animate-pulse">📞</div>
-          <h2 className="text-2xl font-extrabold text-red-400">CALL 911</h2>
-          <p className="text-slate-300">
-            Your information has been recorded. If the call didn&apos;t start automatically:
-          </p>
-          <a
-            href="tel:911"
-            className="block w-full py-4 rounded-xl bg-red-600 font-bold text-xl active:bg-red-700 transition-colors"
-          >
-            Tap to Call 911
-          </a>
-        </div>
+        {/* Fallback call button (visible after dismissing confirmation) */}
+        {!showCallConfirm && (
+          <div className="px-4 space-y-3">
+            <a
+              href="tel:911"
+              className="block w-full py-4 rounded-xl bg-red-600 font-bold text-lg text-center active:bg-red-700 transition-colors"
+            >
+              Call 911
+            </a>
+          </div>
+        )}
 
         <div className="px-4 pt-6">
           <a

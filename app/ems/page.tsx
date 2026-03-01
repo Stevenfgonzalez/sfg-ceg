@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { saveToOutbox } from '@/lib/offline-store';
+import { trySyncNow } from '@/lib/outbox-sync';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EMS COMPLAINT TRIAGE
@@ -57,6 +59,7 @@ export default function EMSPage() {
 
   // Selected complaint
   const [selectedComplaint, setSelectedComplaint] = useState<EMSComplaint | null>(null);
+  const [showCallConfirm, setShowCallConfirm] = useState(false);
 
   // Auto-capture GPS on mount
   useEffect(() => {
@@ -88,35 +91,33 @@ export default function EMSPage() {
 
   const hasLocation = gps || manualAddress.trim();
 
-  // Submit EMS request
+  // Submit EMS request — offline-first
   async function handleComplaintSelect(complaint: EMSComplaint) {
     setSelectedComplaint(complaint);
     setStep('submitting');
 
     try {
-      await fetch('/api/public/ems', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          complaint_code: complaint.code,
-          complaint_label: complaint.label,
-          tier: complaint.tier,
-          dispatch_note: complaint.dispatchNote,
-          first_name: firstName.trim() || undefined,
-          phone: phone.trim() || undefined,
-          people_count: peopleCount,
-          other_text: complaint.code === 'OTHER' ? otherText.trim() : undefined,
-          lat: gps?.lat,
-          lon: gps?.lon,
-          manual_address: !gps ? manualAddress.trim() || undefined : undefined,
-        }),
+      await saveToOutbox('ems', {
+        complaint_code: complaint.code,
+        complaint_label: complaint.label,
+        tier: complaint.tier,
+        dispatch_note: complaint.dispatchNote,
+        first_name: firstName.trim() || undefined,
+        phone: phone.trim() || undefined,
+        people_count: peopleCount,
+        other_text: complaint.code === 'OTHER' ? otherText.trim() : undefined,
+        lat: gps?.lat,
+        lon: gps?.lon,
+        manual_address: !gps ? manualAddress.trim() || undefined : undefined,
       });
+      trySyncNow();
     } catch {
-      // Queued / offline — still show result screen
+      // IndexedDB failure — still show result screen
     }
 
     // Route to appropriate confirmation
     if (complaint.tier === 1) {
+      setShowCallConfirm(true);
       setStep('critical');
     } else {
       setStep('minor');
@@ -301,32 +302,35 @@ export default function EMSPage() {
     );
   }
 
-  // ─── TIER 1: CRITICAL — Auto-dial 911 ───
+  // ─── TIER 1: CRITICAL — Two-step 911 confirmation ───
   if (step === 'critical') {
     return (
       <Shell>
-        <div className="px-4 py-8 text-center">
-          {/* Pulsing phone */}
-          <div className="w-28 h-28 rounded-full bg-red-700 flex items-center justify-center mx-auto mb-6 animate-pulse">
-            <span className="text-5xl">📞</span>
-          </div>
+        <div className="px-4 py-8">
+          {/* Calming confirmation message */}
+          {showCallConfirm && (
+            <div className="bg-slate-800 rounded-xl border border-slate-600 p-5 text-center space-y-4 mb-6">
+              <p className="text-lg text-slate-200 leading-relaxed">
+                Your information is ready.
+                <br />
+                When you call 911, read them the card below.
+              </p>
 
-          <h2 className="text-2xl font-bold mb-2">CALLING 911</h2>
-          <p className="text-slate-400 mb-6">
-            Based on your description, this needs immediate attention.
-          </p>
+              <a
+                href="tel:911"
+                className="block w-full py-5 rounded-xl text-xl font-bold text-white bg-red-600 active:bg-red-700 transition-colors shadow-lg shadow-red-900/50"
+              >
+                Call 911 Now
+              </a>
 
-          <a
-            href="tel:911"
-            className="block w-full py-5 rounded-xl text-xl font-bold text-white bg-red-700 active:bg-red-800 transition-colors mb-4 shadow-lg shadow-red-900/50"
-          >
-            📞 Call 911 Now
-          </a>
-
-          <p className="text-sm text-slate-500 mb-6">
-            Your EMS request has been sent to responders.
-            {phone && <> They may also call you at <strong>{phone}</strong>.</>}
-          </p>
+              <button
+                onClick={() => setShowCallConfirm(false)}
+                className="text-sm text-slate-400 underline"
+              >
+                I&apos;ll call later / Someone is already calling
+              </button>
+            </div>
+          )}
 
           {/* CERT Card */}
           <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 text-left mb-6">
@@ -338,6 +342,9 @@ export default function EMSPage() {
               {phone && <p><span className="text-slate-400">Phone:</span> {phone}</p>}
               <p><span className="text-slate-400">People:</span> {peopleCount}</p>
               <p><span className="text-slate-400">Complaint:</span> {selectedComplaint?.label}</p>
+              {selectedComplaint?.dispatchNote && (
+                <p><span className="text-slate-400">Note:</span> {selectedComplaint.dispatchNote}</p>
+              )}
               {gps && (
                 <p><span className="text-slate-400">GPS:</span> {gps.lat.toFixed(5)}, {gps.lon.toFixed(5)}</p>
               )}
@@ -346,6 +353,21 @@ export default function EMSPage() {
               )}
             </div>
           </div>
+
+          <p className="text-sm text-slate-500 mb-6 text-center">
+            Your EMS request has been sent to responders.
+            {phone && <> They may also call you at <strong>{phone}</strong>.</>}
+          </p>
+
+          {/* Fallback call button (visible after dismissing confirmation) */}
+          {!showCallConfirm && (
+            <a
+              href="tel:911"
+              className="block w-full py-4 rounded-xl text-lg font-bold text-white bg-red-600 text-center active:bg-red-700 transition-colors mb-4"
+            >
+              Call 911
+            </a>
+          )}
 
           <a
             href="/"

@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { flush } from '@/lib/offline-queue';
+import { startOutboxSync } from '@/lib/outbox-sync';
 
 export function ServiceWorkerRegistration() {
   useEffect(() => {
@@ -12,7 +13,11 @@ export function ServiceWorkerRegistration() {
       });
     }
 
-    // Flush offline queue when coming back online
+    // Start the new outbox sync engine (handles online/offline + 30s retry)
+    startOutboxSync();
+
+    // Legacy offline queue flush — keep for backward compatibility
+    // with any items already in the old 'ceg-offline' database
     const handleOnline = () => {
       flush().catch(() => {
         // Flush failed — will retry next time we come online
