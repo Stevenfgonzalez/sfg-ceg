@@ -42,8 +42,11 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createBrowserClient();
 
-    // Generate update token (12 hex chars from UUID)
-    const checkinToken = crypto.randomUUID().slice(0, 12);
+    // Use client-provided token if valid (enables offline-first outbox flow),
+    // otherwise generate one server-side
+    const checkinToken = (typeof body.checkin_token === 'string' && body.checkin_token.length >= 8)
+      ? body.checkin_token.slice(0, 36)
+      : crypto.randomUUID().slice(0, 12);
 
     const row: Record<string, unknown> = {
       incident_id: data.incident_id,

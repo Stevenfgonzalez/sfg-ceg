@@ -146,6 +146,11 @@ function CheckInFlow() {
   const [needsCategories, setNeedsCategories] = useState<NeedCategoryCode[]>([]);
   const [checkinToken, setCheckinToken] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  // PASS claim state
+  const [showClaimModal, setShowClaimModal] = useState(false);
+  const [claimEmail, setClaimEmail] = useState('');
+  const [claiming, setClaiming] = useState(false);
+  const [claimResult, setClaimResult] = useState<{ success: boolean; display_name?: string; error?: string } | null>(null);
 
   // GPS state
   const [gps, setGps] = useState<{ lat: number; lon: number } | null>(null);
@@ -207,6 +212,7 @@ function CheckInFlow() {
 
     try {
       const partySize = Math.max(1, adultCount + childCount);
+      const clientToken = crypto.randomUUID().slice(0, 12);
       const body: Record<string, unknown> = {
         incident_id: hasValidIncident ? incidentId : '00000000-0000-0000-0000-000000000000',
         full_name: nameToSubmit,
@@ -220,6 +226,7 @@ function CheckInFlow() {
         contact_name: contactName.trim() || undefined,
         priority,
         needs_categories: needsCategories,
+        checkin_token: clientToken,
       };
 
       if (phone.trim()) body.phone = phone.trim();
@@ -235,6 +242,7 @@ function CheckInFlow() {
       trySyncNow();
 
       // Show success immediately — server sync happens in the background
+      setCheckinToken(clientToken);
       logEvent('checkin_submitted', { status, party_size: partySize });
       setStep('done');
     } catch (err) {
@@ -270,6 +278,31 @@ function CheckInFlow() {
     }
   }
 
+  // Claim check-in with PASS account
+  async function handleClaimWithPass() {
+    if (!checkinToken || !claimEmail.trim()) return;
+    setClaiming(true);
+    setClaimResult(null);
+    try {
+      const res = await fetch('/api/public/checkin/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ checkin_token: checkinToken, email: claimEmail.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setClaimResult({ success: true, display_name: data.display_name });
+        setShowClaimModal(false);
+      } else {
+        setClaimResult({ success: false, error: data.error || 'Failed to link account' });
+      }
+    } catch {
+      setClaimResult({ success: false, error: 'Network error. Please try again.' });
+    } finally {
+      setClaiming(false);
+    }
+  }
+
   // Toggle a needs category
   function toggleNeed(code: NeedCategoryCode) {
     setNeedsCategories(prev =>
@@ -298,6 +331,10 @@ function CheckInFlow() {
     setPriority(null);
     setNeedsCategories([]);
     setCheckinToken(null);
+    setShowClaimModal(false);
+    setClaimEmail('');
+    setClaiming(false);
+    setClaimResult(null);
   }
 
   // ─── STEP 1: Status Selection ───
@@ -824,6 +861,23 @@ function CheckInFlow() {
                 Update My Needs
               </button>
             )}
+
+            {/* PASS Account Link */}
+            {claimResult?.success ? (
+              <div className="flex items-center justify-center gap-2 py-3 px-4 bg-indigo-900/40 border-2 border-indigo-500 rounded-xl">
+                <span className="text-indigo-300 font-semibold text-sm">
+                  Linked to {claimResult.display_name || 'PASS'} — Verified
+                </span>
+              </div>
+            ) : checkinToken && !claimResult?.success ? (
+              <button
+                onClick={() => setShowClaimModal(true)}
+                className="w-full py-3.5 rounded-xl bg-indigo-600 border-2 border-indigo-500 text-white font-semibold active:bg-indigo-700 transition-colors"
+              >
+                Link to PASS Account
+              </button>
+            ) : null}
+
             <button
               onClick={resetForm}
               className="w-full py-3.5 rounded-xl bg-slate-800 border-2 border-slate-700 text-white font-semibold active:bg-slate-700 transition-colors"
@@ -842,6 +896,44 @@ function CheckInFlow() {
             <strong>For emergencies, call 911</strong>
           </div>
         </div>
+
+        {/* Claim Modal */}
+        {showClaimModal && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-sm border border-slate-700">
+              <h3 className="text-lg font-bold mb-1">Link to PASS Account</h3>
+              <p className="text-sm text-slate-400 mb-4">
+                Enter the email associated with your SFG PASS account.
+              </p>
+              <input
+                type="email"
+                value={claimEmail}
+                onChange={(e) => { setClaimEmail(e.target.value); setClaimResult(null); }}
+                placeholder="you@example.com"
+                className="w-full px-4 py-3 bg-slate-900 border-2 border-slate-600 rounded-lg text-white placeholder-slate-500 mb-3 focus:border-indigo-500 focus:outline-none"
+                autoFocus
+              />
+              {claimResult && !claimResult.success && (
+                <p className="text-sm text-red-400 mb-3">{claimResult.error}</p>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setShowClaimModal(false); setClaimResult(null); }}
+                  className="flex-1 py-3 rounded-lg bg-slate-700 text-white font-semibold active:bg-slate-600 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleClaimWithPass}
+                  disabled={claiming || !claimEmail.trim()}
+                  className="flex-1 py-3 rounded-lg bg-indigo-600 text-white font-semibold active:bg-indigo-700 transition-colors disabled:opacity-50"
+                >
+                  {claiming ? 'Verifying...' : 'Verify'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </Shell>
     );
   }
