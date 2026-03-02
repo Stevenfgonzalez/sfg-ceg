@@ -17,7 +17,9 @@ describe('VALID_COMPLAINT_CODES', () => {
   const helpPageCodes = [
     'CHEST_PAIN', 'NOT_BREATHING', 'UNCONSCIOUS', 'SEVERE_BLEEDING',
     'CHOKING', 'BURNS', 'BROKEN_BONE', 'BREATHING_HARD', 'CUT_WOUND',
-    'DIZZY_FAINT', 'ALLERGIC', 'HEAT_COLD', 'OTHER',
+    'DIZZY_FAINT', 'ALLERGIC', 'HEAT_COLD',
+    'DIABETIC', 'ASTHMA', 'ANXIETY', 'MEDICATION',
+    'OTHER',
   ];
 
   it('contains all EMS page complaint codes', () => {

@@ -11,6 +11,8 @@ export default function ShelterPage() {
   const [gpsStatus, setGpsStatus] = useState<'loading' | 'done' | 'denied'>('loading');
   const [manualAddress, setManualAddress] = useState('');
   const [partySize, setPartySize] = useState(1);
+  const [mobility, setMobility] = useState<'can_move' | 'limited'>('can_move');
+  const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
@@ -43,7 +45,11 @@ export default function ShelterPage() {
         party_size: partySize,
         lat: gps?.lat,
         lon: gps?.lon,
-        notes: manualAddress ? `Address: ${manualAddress}` : undefined,
+        notes: [
+          manualAddress ? `Address: ${manualAddress}` : null,
+          `Mobility: ${mobility === 'limited' ? 'LIMITED' : 'OK'}`,
+          notes.trim() ? `Notes: ${notes.trim()}` : null,
+        ].filter(Boolean).join(' | '),
       });
       trySyncNow();
     } catch {
@@ -192,6 +198,46 @@ export default function ShelterPage() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Mobility */}
+        <div>
+          <p className="text-sm font-semibold text-slate-300 mb-2">Mobility</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setMobility('can_move')}
+              className={`flex-1 py-3 rounded-xl text-sm font-bold border-2 transition-colors min-h-[48px] ${
+                mobility === 'can_move'
+                  ? 'bg-blue-600 border-blue-400 text-white'
+                  : 'bg-slate-800 border-slate-600 text-slate-300'
+              }`}
+            >
+              Can move
+            </button>
+            <button
+              onClick={() => setMobility('limited')}
+              className={`flex-1 py-3 rounded-xl text-sm font-bold border-2 transition-colors min-h-[48px] ${
+                mobility === 'limited'
+                  ? 'bg-amber-600 border-amber-400 text-white'
+                  : 'bg-slate-800 border-slate-600 text-slate-300'
+              }`}
+            >
+              Limited mobility
+            </button>
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div>
+          <p className="text-sm font-semibold text-slate-300 mb-2">Message to responders (optional)</p>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value.slice(0, 200))}
+            placeholder="e.g., elderly resident, oxygen tank, second floor..."
+            rows={2}
+            className="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder:text-slate-500 text-base resize-none"
+          />
+          <div className="text-right text-xs text-slate-500 mt-1">{notes.length}/200</div>
         </div>
 
         {/* Submit */}

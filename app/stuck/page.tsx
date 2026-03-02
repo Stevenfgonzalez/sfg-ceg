@@ -20,6 +20,11 @@ export default function StuckPage() {
   const [gpsStatus, setGpsStatus] = useState<'loading' | 'done' | 'denied'>('loading');
   const [manualAddress, setManualAddress] = useState('');
   const [notes, setNotes] = useState('');
+  const [peopleCount, setPeopleCount] = useState(1);
+  const [vehicleMake, setVehicleMake] = useState('');
+  const [vehicleColor, setVehicleColor] = useState('');
+  const [vehiclePlate, setVehiclePlate] = useState('');
+  const [mobilityDetail, setMobilityDetail] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
@@ -46,15 +51,19 @@ export default function StuckPage() {
     setSubmitting(true);
 
     try {
+      const vehicleDesc = [vehicleMake, vehicleColor, vehiclePlate].filter(Boolean).join(', ');
       await saveToOutbox('stuck', {
         incident_id: DEFAULT_INCIDENT_ID,
         full_name: 'Evacuation Assistance',
         status: 'NEED_HELP',
-        party_size: 1,
+        party_size: peopleCount,
         lat: gps?.lat,
         lon: gps?.lon,
         notes: [
           `Reason: ${STUCK_REASONS.find((r) => r.id === reason)?.label || reason}`,
+          `People: ${peopleCount}`,
+          vehicleDesc ? `Vehicle: ${vehicleDesc}` : null,
+          reason === 'mobility' && mobilityDetail ? `Mobility: ${mobilityDetail}` : null,
           notes ? `Details: ${notes}` : null,
           manualAddress ? `Address: ${manualAddress}` : null,
         ].filter(Boolean).join(' | '),
@@ -191,13 +200,79 @@ export default function StuckPage() {
           )}
         </div>
 
+        {/* People count */}
+        <div>
+          <p className="text-sm font-semibold text-slate-300 mb-2">How many people?</p>
+          <div className="flex gap-2">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n}
+                onClick={() => setPeopleCount(n)}
+                className={`flex-1 py-3 rounded-xl text-lg font-bold border-2 transition-colors min-h-[48px] ${
+                  peopleCount === n
+                    ? 'bg-amber-600 border-amber-400 text-white'
+                    : 'bg-slate-800 border-slate-600 text-slate-300'
+                }`}
+              >
+                {n === 5 ? '5+' : n}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Vehicle description — hidden when "no vehicle" */}
+        {reason && reason !== 'vehicle' && (
+          <div>
+            <p className="text-sm font-semibold text-slate-300 mb-2">Vehicle description (optional)</p>
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={vehicleMake}
+                onChange={(e) => setVehicleMake(e.target.value)}
+                placeholder="Make / model (e.g., Toyota Camry)"
+                className="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder:text-slate-500 text-base"
+              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={vehicleColor}
+                  onChange={(e) => setVehicleColor(e.target.value)}
+                  placeholder="Color"
+                  className="flex-1 px-4 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder:text-slate-500 text-base"
+                />
+                <input
+                  type="text"
+                  value={vehiclePlate}
+                  onChange={(e) => setVehiclePlate(e.target.value)}
+                  placeholder="License plate"
+                  className="flex-1 px-4 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder:text-slate-500 text-base"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Mobility detail — shown when reason is mobility */}
+        {reason === 'mobility' && (
+          <div>
+            <p className="text-sm font-semibold text-slate-300 mb-2">Mobility details</p>
+            <input
+              type="text"
+              value={mobilityDetail}
+              onChange={(e) => setMobilityDetail(e.target.value)}
+              placeholder="e.g., wheelchair, walker, oxygen tank..."
+              className="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder:text-slate-500 text-base"
+            />
+          </div>
+        )}
+
         {/* Notes */}
         <div>
           <p className="text-sm font-semibold text-slate-300 mb-2">Additional details (optional)</p>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="e.g., License plate, vehicle description, number of people..."
+            placeholder="Any other information for responders..."
             rows={2}
             className="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white placeholder:text-slate-500 text-base resize-none"
           />

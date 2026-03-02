@@ -263,13 +263,25 @@ All submissions create immutable events:
 
 ```
 Phase 1 ✅  Landing page + basic check-in + safe zones
-Phase 2     Full check-in (7 statuses, party, pets, offline queue)
-Phase 3     EMS complaint triage (13 types, auto-911)
-Phase 4     Shelter-in-place pin page
-Phase 5     Reunification portal page
-Phase 6     Household pre-planning + go-bag
-Phase 7     Stuck/evacuation assistance form
+Phase 2 ✅  Full check-in (7 statuses, party, pets, offline queue)
+Phase 3 ✅  EMS complaint triage (17 types, auto-911, tier-based routing)
+Phase 4 ✅  Shelter-in-place pin page (mobility + notes)
+Phase 5 ✅  Reunification portal page (rate-limit feedback)
+Phase 6 ✅  Household pre-planning + go-bag (localStorage-only)
+Phase 7 ✅  Stuck/evacuation assistance form (people count, vehicle, mobility)
 ```
+
+---
+
+## Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| **Dependent details → Phase 6, not Phase 2** | Emergency check-in (Phase 2) must be fast — 3 taps max. Detailed household composition belongs in pre-planning (Phase 6) when users aren't panicking. |
+| **Emergency vault deferred** | Document storage requires authentication and cloud storage. MVP uses localStorage-only for the household page. Vault will come when auth is added. |
+| **Phase 6 MVP = localStorage-only** | Zero-login requirement means no server-side storage. All household data persists in the browser. Users can print their go-bag checklist. |
+| **BURNS + ALLERGIC promoted to Tier 1** | Per spec: burns are critical, allergic reactions risk anaphylaxis. Both require 911 routing. |
+| **4 new complaint codes added** | DIABETIC (T1), ASTHMA (T2), ANXIETY (T2), MEDICATION (T2) — brings help page to 17 complaints matching EMS page coverage. |
 
 ---
 

@@ -12,7 +12,9 @@ export const EMS_COMPLAINT_CODES = [
 export const HELP_COMPLAINT_CODES = [
   'CHEST_PAIN', 'NOT_BREATHING', 'UNCONSCIOUS', 'SEVERE_BLEEDING',
   'CHOKING', 'BURNS', 'BROKEN_BONE', 'BREATHING_HARD', 'CUT_WOUND',
-  'DIZZY_FAINT', 'ALLERGIC', 'HEAT_COLD', 'OTHER',
+  'DIZZY_FAINT', 'ALLERGIC', 'HEAT_COLD',
+  'DIABETIC', 'ASTHMA', 'ANXIETY', 'MEDICATION',
+  'OTHER',
 ] as const;
 
 // Union of all valid complaint codes across both endpoints

@@ -26,6 +26,7 @@ function ReunifyPage() {
   const [searchPhone, setSearchPhone] = useState('');
   const [lookupMessage, setLookupMessage] = useState('');
   const [searching, setSearching] = useState(false);
+  const [remainingLookups, setRemainingLookups] = useState<number | null>(null);
 
   // Request state
   const [soughtName, setSoughtName] = useState('');
@@ -49,8 +50,17 @@ function ReunifyPage() {
           phone: searchPhone,
         }),
       });
-      const data = await res.json();
-      setLookupMessage(data.message || data.error || 'Unable to complete lookup.');
+
+      const remaining = res.headers.get('X-RateLimit-Remaining');
+      if (remaining !== null) setRemainingLookups(parseInt(remaining, 10));
+
+      if (res.status === 429) {
+        setLookupMessage('Too many lookups. Please wait 60 seconds.');
+        setRemainingLookups(0);
+      } else {
+        const data = await res.json();
+        setLookupMessage(data.message || data.error || 'Unable to complete lookup.');
+      }
     } catch {
       setLookupMessage('Network error. Please try again.');
     }
@@ -109,9 +119,20 @@ function ReunifyPage() {
             />
           </div>
 
+          {remainingLookups !== null && remainingLookups <= 2 && remainingLookups > 0 && (
+            <div className="bg-amber-900/60 rounded-xl px-4 py-2.5 text-sm text-amber-200">
+              {remainingLookups} lookup{remainingLookups !== 1 ? 's' : ''} remaining. Searches are rate-limited for privacy.
+            </div>
+          )}
+          {remainingLookups === 0 && (
+            <div className="bg-red-900/60 rounded-xl px-4 py-2.5 text-sm text-red-200">
+              Too many lookups. Please wait 60 seconds.
+            </div>
+          )}
+
           <button
             onClick={handleLookup}
-            disabled={searchPhone.replace(/\D/g, '').length < 10 || searching}
+            disabled={searchPhone.replace(/\D/g, '').length < 10 || searching || remainingLookups === 0}
             className="w-full py-4 rounded-xl bg-purple-600 font-bold text-lg active:bg-purple-700 transition-colors disabled:opacity-50"
           >
             {searching ? 'Searching...' : 'Search'}
