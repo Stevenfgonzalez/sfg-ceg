@@ -18,8 +18,8 @@ import {
   type OutboxType,
 } from './offline-store';
 
-// Map outbox type to API route
-const API_ROUTES: Record<OutboxType, string> = {
+// Map outbox type to API route (cloud — relative URLs)
+const CLOUD_ROUTES: Record<OutboxType, string> = {
   checkin: '/api/public/checkin',
   help: '/api/public/help',
   ems: '/api/public/ems',
@@ -27,6 +27,58 @@ const API_ROUTES: Record<OutboxType, string> = {
   stuck: '/api/public/checkin',      // stuck submits to checkin endpoint
   reunify: '/api/public/reunify',
 };
+
+// Map outbox type to edge-api route (field Wi-Fi — absolute URL to Pi 5)
+const EDGE_API_BASE = 'http://10.42.0.1:3000';
+const EDGE_ROUTES: Record<OutboxType, string> = {
+  checkin: `${EDGE_API_BASE}/api/checkin`,
+  help: `${EDGE_API_BASE}/api/checkin`,
+  ems: `${EDGE_API_BASE}/api/checkin`,
+  shelter: `${EDGE_API_BASE}/api/checkin`,
+  stuck: `${EDGE_API_BASE}/api/checkin`,
+  reunify: `${EDGE_API_BASE}/api/checkin`,
+};
+
+// Edge-api detection — cached for 60 seconds
+let edgeAvailable = false;
+let edgeCheckedAt = 0;
+const EDGE_CACHE_MS = 60_000;
+
+/**
+ * Probe the edge-api to see if we're on field Wi-Fi (SFG-FIELD-xx AP).
+ * Caches the result for 60s to avoid spamming the edge node.
+ */
+async function isEdgeReachable(): Promise<boolean> {
+  if (Date.now() - edgeCheckedAt < EDGE_CACHE_MS) return edgeAvailable;
+  try {
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 2000);
+    const res = await fetch(`${EDGE_API_BASE}/api/edge/status`, {
+      signal: ctrl.signal,
+      mode: 'no-cors',
+    });
+    clearTimeout(timeout);
+    edgeAvailable = res.ok || res.type === 'opaque'; // no-cors returns opaque
+  } catch {
+    edgeAvailable = false;
+  }
+  edgeCheckedAt = Date.now();
+  return edgeAvailable;
+}
+
+/** Force a fresh edge-api probe on next sync */
+export function resetEdgeDetection(): void {
+  edgeCheckedAt = 0;
+  edgeAvailable = false;
+}
+
+/** Check if currently routing to edge-api */
+export function isEdgeMode(): boolean {
+  return edgeAvailable;
+}
+
+// Keep backward compat — re-export as API_ROUTES
+const API_ROUTES = CLOUD_ROUTES;
 
 let syncing = false;
 let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -64,10 +116,14 @@ async function processOutbox(): Promise<number> {
       return 0;
     }
 
+    // Detect if we're on field Wi-Fi (edge-api reachable)
+    const useEdge = await isEdgeReachable();
+    const routes = useEdge ? EDGE_ROUTES : CLOUD_ROUTES;
+
     for (const item of items) {
       if (!isOnline()) break; // Stop if we went offline mid-sync
 
-      const url = API_ROUTES[item.type];
+      const url = routes[item.type];
       if (!url) {
         // Unknown type — mark as synced to clear it
         await markSynced(item.event_id);
@@ -92,7 +148,10 @@ async function processOutbox(): Promise<number> {
         }
         // Other server errors (5xx) — leave in outbox, try next item
       } catch {
-        // Network error — stop processing (we're likely offline)
+        // Network error — if on edge, fall back to cloud routes and retry
+        if (useEdge) {
+          resetEdgeDetection();
+        }
         break;
       }
     }
