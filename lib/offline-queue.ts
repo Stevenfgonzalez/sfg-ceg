@@ -116,6 +116,7 @@ export async function flush(): Promise<{ flushed: number; failed: number }> {
         method: item.method,
         headers: item.headers,
         body: item.body,
+        signal: AbortSignal.timeout(8000),
       });
 
       if (res.ok || res.status === 400) {
@@ -156,6 +157,7 @@ export async function submitWithFallback(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: bodyStr,
+      signal: AbortSignal.timeout(8000),
     });
     return { online: true, response: res };
   } catch {

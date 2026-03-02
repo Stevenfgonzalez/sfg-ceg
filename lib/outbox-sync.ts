@@ -29,7 +29,7 @@ const CLOUD_ROUTES: Record<OutboxType, string> = {
 };
 
 // Map outbox type to edge-api route (field Wi-Fi — absolute URL to Pi 5)
-const EDGE_API_BASE = 'http://10.42.0.1:3000';
+const EDGE_API_BASE = process.env.NEXT_PUBLIC_EDGE_API_BASE || 'http://10.42.0.1:3000';
 const EDGE_ROUTES: Record<OutboxType, string> = {
   checkin: `${EDGE_API_BASE}/api/checkin`,
   help: `${EDGE_API_BASE}/api/checkin`,
@@ -136,6 +136,7 @@ async function processOutbox(): Promise<number> {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(item.payload),
+          signal: AbortSignal.timeout(8000),
         });
 
         if (res.ok || res.status === 400) {

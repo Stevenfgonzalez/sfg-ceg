@@ -4,7 +4,11 @@ import { createBrowserClient } from '@/lib/supabase';
 // POST /api/analytics — fire-and-forget event logging
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const raw = await request.text();
+    if (raw.length > 4096) {
+      return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
+    }
+    const body = JSON.parse(raw);
     const { event, props, page, referrer } = body;
 
     if (!event || typeof event !== 'string') {

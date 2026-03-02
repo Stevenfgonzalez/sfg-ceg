@@ -58,6 +58,7 @@ export async function checkRateLimit(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(pipeline),
+      signal: AbortSignal.timeout(3000),
     });
 
     if (!res.ok) {

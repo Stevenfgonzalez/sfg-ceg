@@ -5,6 +5,13 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
+    coverage: {
+      provider: 'v8',
+      thresholds: {
+        lines: 40,
+        branches: 30,
+      },
+    },
   },
   resolve: {
     alias: {
