@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
   const secret = request.headers.get('x-edge-sync-secret');
   const expectedSecret = process.env.EDGE_SYNC_SECRET;
   if (expectedSecret && secret !== expectedSecret) {
-    log.warn('[edge-sync] Invalid secret', { ip: request.headers.get('x-forwarded-for') });
+    log({ level: 'warn', event: 'edge_sync_auth_failed', route: '/api/edge-sync' });
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
         );
 
       if (logError) {
-        log.warn('[edge-sync] lorawan_events insert error', { event_id: event.event_id, error: logError.message });
+        log({ level: 'warn', event: 'edge_sync_lorawan_insert_error', route: '/api/edge-sync', error: logError.message });
       }
 
       // For check-in type events, also insert into checkins table
@@ -88,22 +88,13 @@ export async function POST(request: NextRequest) {
 
       accepted.push(event.event_id);
     } catch (err) {
-      log.error('[edge-sync] event processing error', {
-        event_id: event.event_id,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      log({ level: 'error', event: 'edge_sync_event_error', route: '/api/edge-sync', error: err instanceof Error ? err.message : String(err) });
       rejected.push(event.event_id);
     }
   }
 
   const duration = Date.now() - start;
-  log.info('[edge-sync] batch processed', {
-    edge_node_id: body.edge_node_id,
-    total: body.batch.length,
-    accepted: accepted.length,
-    rejected: rejected.length,
-    duration_ms: duration,
-  });
+  log({ level: 'info', event: 'edge_sync_batch', route: '/api/edge-sync', duration_ms: duration, meta: { edge_node_id: body.edge_node_id, total: body.batch.length, accepted: accepted.length, rejected: rejected.length } });
 
   return NextResponse.json({
     accepted_event_ids: accepted,
@@ -143,9 +134,6 @@ async function processCheckinEvent(
     .upsert(checkinData, { onConflict: 'event_id', ignoreDuplicates: true });
 
   if (error) {
-    log.warn('[edge-sync] checkins insert error', {
-      event_id: event.event_id,
-      error: error.message,
-    });
+    log({ level: 'warn', event: 'edge_sync_checkin_insert_error', route: '/api/edge-sync', error: error.message });
   }
 }
