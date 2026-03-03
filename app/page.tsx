@@ -182,6 +182,17 @@ export default function CEGDashboard() {
               <p className="text-sm text-purple-200">Search for a loved one&apos;s status</p>
             </div>
           </a>
+
+          <a
+            href="/care-cards"
+            className="w-full flex items-center gap-4 bg-blue-800 rounded-xl px-5 py-4 active:bg-blue-900 transition-colors border border-blue-700 text-left block"
+          >
+            <span className="text-3xl">🏠</span>
+            <div>
+              <p className="font-bold text-lg">Field Care Card</p>
+              <p className="text-sm text-blue-200">Medical profiles for first responders</p>
+            </div>
+          </a>
         </div>
 
         {/* Life-Saving Skills */}
@@ -208,20 +219,6 @@ export default function CEGDashboard() {
             <div>
               <p className="font-bold text-base">Household Pre-Plan</p>
               <p className="text-sm text-slate-400">Members, pets, go-bag checklist</p>
-            </div>
-          </a>
-        </div>
-
-        {/* Field Care Card */}
-        <div className="px-4 mb-6">
-          <a
-            href="/care-cards"
-            className="flex items-center gap-4 bg-slate-800 rounded-xl px-5 py-4 border border-slate-700 active:bg-slate-700 transition-colors"
-          >
-            <span className="text-3xl">🏥</span>
-            <div>
-              <p className="font-bold text-base">Field Care Card</p>
-              <p className="text-sm text-slate-400">Medical info for first responders</p>
             </div>
           </a>
         </div>
