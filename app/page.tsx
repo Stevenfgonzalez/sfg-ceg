@@ -80,7 +80,7 @@ export default function CEGDashboard() {
 
         {/* Field Care Card */}
         <a
-          href="/care-cards"
+          href="/fcc"
           className="mx-4 mb-6 flex items-center gap-3 bg-blue-800 rounded-xl px-4 py-3 active:bg-blue-900 transition-colors border border-blue-700"
         >
           <span className="text-2xl">🏠</span>
@@ -563,7 +563,7 @@ function Post911Screen({ onReturn }: { onReturn: () => void }) {
 
         {/* Actions */}
         <a
-          href="/care-cards"
+          href="/fcc"
           className="block w-full bg-gradient-to-r from-blue-900 to-blue-800 rounded-xl px-5 py-3.5 border border-blue-600 active:from-blue-800 active:to-blue-700 transition-colors text-center font-bold text-sm tracking-wide"
         >
           View Full Care Profiles →

@@ -10,7 +10,7 @@ import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
-  const redirect = searchParams.get('redirect') || '/care-cards';
+  const redirect = searchParams.get('redirect') || '/fcc';
 
   if (code) {
     const response = NextResponse.redirect(new URL(redirect, request.url));

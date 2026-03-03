@@ -8,7 +8,7 @@ import { logEvent } from '@/lib/analytics';
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/care-cards';
+  const redirect = searchParams.get('redirect') || '/fcc';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

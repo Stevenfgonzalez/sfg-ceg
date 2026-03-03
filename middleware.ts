@@ -3,7 +3,9 @@ import type { NextRequest } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
 
 // Routes that require CEG account authentication
-const PROTECTED_ROUTES = ['/care-cards'];
+// /fcc/[householdId] is PUBLIC (EMS entry) — only owner routes are protected
+const PROTECTED_ROUTES = ['/fcc/edit', '/fcc/log', '/fcc/print'];
+// /fcc exactly (dashboard) is also protected, handled below
 
 export async function middleware(request: NextRequest) {
   const requestId = crypto.randomUUID();
@@ -22,7 +24,9 @@ export async function middleware(request: NextRequest) {
 
   // Check protected routes
   const pathname = request.nextUrl.pathname;
-  const isProtected = PROTECTED_ROUTES.some((route) => pathname.startsWith(route));
+  const isProtected =
+    pathname === '/fcc' ||
+    PROTECTED_ROUTES.some((route) => pathname.startsWith(route));
 
   if (isProtected && !user) {
     const loginUrl = new URL('/login', request.url);
@@ -32,12 +36,20 @@ export async function middleware(request: NextRequest) {
 
   // Redirect authenticated users away from login/signup
   if (user && (pathname === '/login' || pathname === '/signup')) {
-    return NextResponse.redirect(new URL('/care-cards', request.url));
+    return NextResponse.redirect(new URL('/fcc', request.url));
+  }
+
+  // Legacy redirects
+  if (pathname === '/care-cards') {
+    return NextResponse.redirect(new URL('/fcc', request.url));
+  }
+  if (pathname === '/fcc-ems') {
+    return NextResponse.redirect(new URL(`/fcc/${encodeURIComponent('FCC-4827')}`, request.url));
   }
 
   return response;
 }
 
 export const config = {
-  matcher: ['/api/:path*', '/care-cards/:path*', '/login', '/signup'],
+  matcher: ['/api/:path*', '/fcc/:path*', '/fcc', '/care-cards', '/fcc-ems', '/login', '/signup'],
 };
