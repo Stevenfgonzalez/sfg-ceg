@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { logEvent } from '@/lib/analytics';
+import { createAuthBrowserClient } from '@/lib/supabase-auth';
 import QRCode from 'qrcode';
 import { MOCK_HOUSEHOLD } from '../data/mock-fcc-household';
 
@@ -13,8 +14,25 @@ export default function CareCardsPage() {
   const [screen, setScreen] = useState<Screen>('dashboard');
   const [showCode, setShowCode] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   const household = MOCK_HOUSEHOLD;
+
+  // Load user session
+  useEffect(() => {
+    const supabase = createAuthBrowserClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserEmail(user.email ?? null);
+    });
+  }, []);
+
+  const handleLogout = async () => {
+    const supabase = createAuthBrowserClient();
+    await supabase.auth.signOut();
+    logEvent('auth_logout');
+    router.push('/');
+    router.refresh();
+  };
 
   const generateQR = useCallback(async () => {
     try {
@@ -164,7 +182,15 @@ export default function CareCardsPage() {
         >
           ←
         </a>
-        <h1 className="text-lg font-bold">Field Care Cards</h1>
+        <h1 className="text-lg font-bold flex-1">Field Care Cards</h1>
+        {userEmail && (
+          <button
+            onClick={handleLogout}
+            className="text-xs text-slate-400 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 active:bg-slate-700 transition-colors"
+          >
+            Sign Out
+          </button>
+        )}
       </header>
 
       <div className="px-4 pt-5 space-y-4 pb-8">
@@ -172,6 +198,9 @@ export default function CareCardsPage() {
         <div className="text-center">
           <p className="text-xs font-bold tracking-widest text-amber-500 uppercase font-mono">Field Care Cards</p>
           <p className="text-xs text-slate-400 mt-1">Household Emergency Profiles</p>
+          {userEmail && (
+            <p className="text-[10px] text-slate-500 mt-1 font-mono">{userEmail}</p>
+          )}
         </div>
 
         {/* Household card */}
