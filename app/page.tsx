@@ -69,7 +69,7 @@ export default function CEGDashboard() {
         {/* 911 Banner */}
         <button
           onClick={() => { logEvent('911_prompt_open'); setShow911Prompt(true); }}
-          className="mx-4 mb-6 w-[calc(100%-2rem)] flex items-center gap-3 bg-red-700 rounded-xl px-4 py-3 active:bg-red-800 transition-colors text-left"
+          className="mx-4 mb-3 w-[calc(100%-2rem)] flex items-center gap-3 bg-red-700 rounded-xl px-4 py-3 active:bg-red-800 transition-colors text-left"
         >
           <span className="text-2xl">📞</span>
           <div>
@@ -77,6 +77,18 @@ export default function CEGDashboard() {
             <p className="text-sm text-red-200">Tap to call 911</p>
           </div>
         </button>
+
+        {/* Field Care Card */}
+        <a
+          href="/care-cards"
+          className="mx-4 mb-6 flex items-center gap-3 bg-blue-800 rounded-xl px-4 py-3 active:bg-blue-900 transition-colors border border-blue-700"
+        >
+          <span className="text-2xl">🏠</span>
+          <div>
+            <p className="font-bold text-base">Field Care Card</p>
+            <p className="text-sm text-blue-200">Medical profiles for first responders</p>
+          </div>
+        </a>
 
         {/* 911 Confirmation Modal */}
         {show911Prompt && (
@@ -183,16 +195,6 @@ export default function CEGDashboard() {
             </div>
           </a>
 
-          <a
-            href="/care-cards"
-            className="w-full flex items-center gap-4 bg-blue-800 rounded-xl px-5 py-4 active:bg-blue-900 transition-colors border border-blue-700 text-left block"
-          >
-            <span className="text-3xl">🏠</span>
-            <div>
-              <p className="font-bold text-lg">Field Care Card</p>
-              <p className="text-sm text-blue-200">Medical profiles for first responders</p>
-            </div>
-          </a>
         </div>
 
         {/* Life-Saving Skills */}
