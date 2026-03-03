@@ -92,6 +92,7 @@ export default function FccEmsPage() {
   const [household, setHousehold] = useState<FccHousehold | null>(null);
   const [activeMember, setActiveMember] = useState(0);
   const [expiresAt, setExpiresAt] = useState('');
+  const [showPush, setShowPush] = useState(false);
 
   const exitToHome = useCallback(() => {
     logEvent('fcc_ems_exit');
@@ -199,7 +200,53 @@ export default function FccEmsPage() {
               <p className="text-xs text-slate-400">Patient Care Report number</p>
             </div>
           </button>
+
+          <div className="h-px bg-slate-700 my-1" />
+
+          <button
+            onClick={() => {
+              logEvent('fcc_ems_temp_code_request');
+              setShowPush(true);
+              setTimeout(() => setShowPush(false), 8000);
+              handleSelectMethod('resident_code');
+            }}
+            className="w-full flex items-center gap-3 bg-slate-800 rounded-xl px-4 py-3.5 border border-slate-700 active:border-blue-500 transition-colors text-left"
+          >
+            <span className="text-2xl">📱</span>
+            <div>
+              <p className="font-bold text-sm">Request Temp Code</p>
+              <p className="text-xs text-slate-400">Push notification to resident&apos;s device</p>
+            </div>
+          </button>
         </div>
+
+        {/* Push notification overlay */}
+        {showPush && (
+          <div className="fixed top-3 left-3 right-3 z-50 animate-slide-down">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-3.5 border border-amber-500 shadow-2xl">
+              <div className="flex justify-between items-start">
+                <div className="flex gap-2.5 items-start">
+                  <div className="w-9 h-9 rounded-lg bg-amber-500 flex items-center justify-center text-[10px] font-extrabold text-black font-mono shrink-0">SFG</div>
+                  <div>
+                    <p className="text-xs font-bold">Emergency Access Requested</p>
+                    <p className="text-xs text-slate-400 mt-0.5">Someone scanned your Field Care Card QR</p>
+                    <div className="mt-2 bg-gray-900 rounded-md border border-green-700 px-3.5 py-2 inline-block">
+                      <p className="text-[10px] text-green-400 font-semibold">TEMPORARY CODE</p>
+                      <p className="text-xl font-extrabold tracking-[0.3em] font-mono">7741</p>
+                      <p className="text-[9px] text-slate-400">Expires in 4 hours</p>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowPush(false)}
+                  className="text-slate-400 text-base leading-none active:text-slate-300"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Exit link */}
         <div className="px-4 pb-8 text-center">

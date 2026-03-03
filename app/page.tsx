@@ -10,8 +10,9 @@ import {
   findNearestZones,
   type SafeZone,
 } from './data/safe-zones';
+import { MOCK_HOUSEHOLD } from './data/mock-fcc-household';
 
-type Screen = 'home' | 'find_safe_zone' | 'need_help';
+type Screen = 'home' | 'find_safe_zone' | 'need_help' | 'post_911';
 
 export default function CEGDashboard() {
   const [screen, setScreen] = useState<Screen>('home');
@@ -19,6 +20,8 @@ export default function CEGDashboard() {
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'loading' | 'done' | 'denied'>('idle');
   const [filterPets, setFilterPets] = useState(false);
   const [filterAda, setFilterAda] = useState(false);
+  const [show911Prompt, setShow911Prompt] = useState(false);
+  const [calling911, setCalling911] = useState(false);
 
   const handleFindNearest = useCallback(() => {
     if (!navigator.geolocation) {
@@ -64,16 +67,64 @@ export default function CEGDashboard() {
         </header>
 
         {/* 911 Banner */}
-        <a
-          href="tel:911"
-          className="mx-4 mb-6 flex items-center gap-3 bg-red-700 rounded-xl px-4 py-3 active:bg-red-800 transition-colors"
+        <button
+          onClick={() => { logEvent('911_prompt_open'); setShow911Prompt(true); }}
+          className="mx-4 mb-6 w-[calc(100%-2rem)] flex items-center gap-3 bg-red-700 rounded-xl px-4 py-3 active:bg-red-800 transition-colors text-left"
         >
           <span className="text-2xl">📞</span>
           <div>
             <p className="font-bold text-base">Life-threatening emergency?</p>
             <p className="text-sm text-red-200">Tap to call 911</p>
           </div>
-        </a>
+        </button>
+
+        {/* 911 Confirmation Modal */}
+        {show911Prompt && (
+          <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-5">
+            <div className="bg-gray-900 rounded-2xl border border-red-700 p-6 w-full max-w-xs text-center">
+              <div className="w-[72px] h-[72px] rounded-full bg-gradient-to-br from-red-600 to-red-800 flex items-center justify-center mx-auto mb-4 text-3xl shadow-lg shadow-red-500/30">
+                📞
+              </div>
+              <p className="text-xl font-extrabold">Call 911</p>
+              <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                This will open your phone&apos;s dialer to call 911.<br/>
+                Your Field Care Card will be ready when you return.
+              </p>
+              <button
+                onClick={() => {
+                  setShow911Prompt(false);
+                  setCalling911(true);
+                  logEvent('911_call_initiated');
+                  window.location.href = 'tel:911';
+                  setTimeout(() => {
+                    setCalling911(false);
+                    setScreen('post_911');
+                  }, 2500);
+                }}
+                className="w-full mt-5 bg-gradient-to-r from-red-600 to-red-800 rounded-xl px-4 py-4 text-lg font-extrabold tracking-wide shadow-lg shadow-red-500/40 active:from-red-700 active:to-red-900 transition-colors"
+              >
+                Call 911 Now
+              </button>
+              <button
+                onClick={() => setShow911Prompt(false)}
+                className="w-full mt-2.5 border border-slate-700 rounded-xl px-4 py-3 text-sm font-semibold text-slate-400 active:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Calling 911 Overlay */}
+        {calling911 && (
+          <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-green-500 to-green-700 flex items-center justify-center text-4xl mb-4 animate-pulse">
+              📞
+            </div>
+            <p className="text-2xl font-extrabold tracking-wider">Calling 911...</p>
+            <p className="text-xs text-slate-400 mt-2">Your Field Care Card will load when you return</p>
+          </div>
+        )}
 
         {/* Primary Actions */}
         <div className="px-4 space-y-3 mb-8">
@@ -205,6 +256,11 @@ export default function CEGDashboard() {
         </footer>
       </main>
     );
+  }
+
+  // ── POST-911 FCC SCREEN ──
+  if (screen === 'post_911') {
+    return <Post911Screen onReturn={() => setScreen('home')} />;
   }
 
   // ── FIND SAFE ZONE SCREEN ──
@@ -403,6 +459,125 @@ function ResourceLink({
       <p className="font-semibold text-sm">{label}</p>
       <p className="text-xs text-slate-400">{sub}</p>
     </a>
+  );
+}
+
+function Post911Screen({ onReturn }: { onReturn: () => void }) {
+  const [notifiedContacts, setNotifiedContacts] = useState(false);
+  const [checklist, setChecklist] = useState({ door: false, dog: false, meds: false, directive: false });
+
+  const toggleCheck = (key: keyof typeof checklist) => {
+    setChecklist((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const checklistItems: Array<{ key: keyof typeof checklist; label: string; detail: string }> = [
+    { key: 'door', label: 'Unlock the front door', detail: MOCK_HOUSEHOLD.access.bestDoor },
+    { key: 'dog', label: 'Secure the dog', detail: MOCK_HOUSEHOLD.access.dogs },
+    { key: 'meds', label: 'Gather current medications', detail: 'Bring med bottles to the door if possible' },
+    { key: 'directive', label: 'Locate advance directive', detail: MOCK_HOUSEHOLD.members[0].directiveLocation },
+  ];
+
+  return (
+    <main className="min-h-screen bg-slate-900 text-white">
+      {/* Red priority header */}
+      <div className="bg-gradient-to-r from-red-700 to-red-800 px-4 py-3.5 text-center">
+        <p className="text-xs font-bold tracking-widest text-red-200/70 uppercase font-mono">911 Called — Help is on the way</p>
+        <p className="font-extrabold text-sm mt-1">Your Field Care Card is Active</p>
+      </div>
+
+      <div className="px-4 py-4 space-y-4">
+        {/* ACCESS CODE */}
+        <div className="bg-gradient-to-br from-green-900 to-green-800 rounded-xl border-2 border-green-600 p-5 text-center shadow-lg shadow-green-900/20">
+          <p className="text-xs font-bold tracking-widest text-green-300 uppercase font-mono">Read This Code to Dispatch</p>
+          <p className="text-5xl font-extrabold tracking-[0.35em] font-mono mt-2">4827</p>
+          <p className="text-xs text-green-300 mt-2 leading-relaxed">
+            &quot;My SFG code is four-eight-two-seven&quot;<br/>
+            <span className="text-green-400/60">This gives EMS access to your care profiles</span>
+          </p>
+        </div>
+
+        {/* Hazard reminder */}
+        {MOCK_HOUSEHOLD.access.hazards && (
+          <div className="bg-gradient-to-r from-red-950 to-red-900 rounded-xl px-4 py-3 flex items-center gap-3">
+            <span className="text-xl">⚠️</span>
+            <div>
+              <p className="text-xs font-bold text-red-300 uppercase tracking-wider font-mono">Remind Dispatch</p>
+              <p className="font-bold text-sm">{MOCK_HOUSEHOLD.access.hazards}</p>
+            </div>
+          </div>
+        )}
+
+        {/* While You Wait checklist */}
+        <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
+          <h3 className="text-xs font-bold tracking-widest text-amber-500 uppercase font-mono mb-3">While You Wait</h3>
+          {checklistItems.map((item) => (
+            <button
+              key={item.key}
+              onClick={() => toggleCheck(item.key)}
+              className="flex items-start gap-3 w-full py-2.5 border-b border-slate-700 last:border-0 text-left"
+            >
+              <div className={`w-5 h-5 rounded-md shrink-0 mt-0.5 flex items-center justify-center text-xs font-bold transition-colors ${
+                checklist[item.key]
+                  ? 'bg-green-500 border-2 border-green-500'
+                  : 'border-2 border-slate-600'
+              }`}>
+                {checklist[item.key] && '✓'}
+              </div>
+              <div>
+                <p className={`text-sm font-semibold transition-colors ${checklist[item.key] ? 'text-green-400' : ''}`}>{item.label}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{item.detail}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {/* Emergency contacts */}
+        <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
+          <h3 className="text-xs font-bold tracking-widest text-blue-400 uppercase font-mono mb-3">Emergency Contacts</h3>
+          {MOCK_HOUSEHOLD.emergencyContacts.map((c, i) => (
+            <div key={i} className={`flex items-center justify-between py-2 ${i < MOCK_HOUSEHOLD.emergencyContacts.length - 1 ? 'border-b border-slate-700' : ''}`}>
+              <div>
+                <p className="text-sm font-semibold">{c.name}</p>
+                <p className="text-xs text-slate-400">{c.relation} · {c.phone}</p>
+              </div>
+              <a
+                href={`tel:${c.phone.replace(/\D/g, '')}`}
+                className="bg-gray-900 border border-slate-600 rounded-md px-3 py-1.5 text-xs font-semibold text-blue-400 active:bg-slate-700"
+              >
+                Call
+              </a>
+            </div>
+          ))}
+          {!notifiedContacts ? (
+            <button
+              onClick={() => { setNotifiedContacts(true); logEvent('911_notify_contacts'); }}
+              className="w-full mt-3 bg-blue-600 rounded-lg px-4 py-2.5 text-xs font-bold active:bg-blue-700 transition-colors"
+            >
+              Notify All Contacts
+            </button>
+          ) : (
+            <div className="w-full mt-3 bg-green-900 border border-green-700 rounded-lg px-4 py-2.5 text-xs font-bold text-green-400 text-center">
+              ✓ Contacts Notified
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <a
+          href="/care-cards"
+          className="block w-full bg-gradient-to-r from-blue-900 to-blue-800 rounded-xl px-5 py-3.5 border border-blue-600 active:from-blue-800 active:to-blue-700 transition-colors text-center font-bold text-sm tracking-wide"
+        >
+          View Full Care Profiles →
+        </a>
+
+        <button
+          onClick={onReturn}
+          className="w-full border border-slate-700 rounded-xl px-4 py-3 text-xs font-semibold text-slate-400 active:bg-slate-800 transition-colors"
+        >
+          Return to CEG Home
+        </button>
+      </div>
+    </main>
   );
 }
 
