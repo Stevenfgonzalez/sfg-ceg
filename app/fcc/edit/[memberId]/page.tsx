@@ -289,11 +289,26 @@ export default function FCCMemberEditPage() {
                 id="photo-input"
                 disabled={photoUploading}
               />
+              <input
+                type="file"
+                accept="image/jpeg,image/png"
+                capture="environment"
+                onChange={handlePhotoUpload}
+                className="hidden"
+                id="camera-input"
+                disabled={photoUploading}
+              />
+              <label
+                htmlFor="camera-input"
+                className="block bg-amber-600 rounded-lg px-3 py-1.5 text-xs font-bold text-black text-center cursor-pointer active:bg-amber-700"
+              >
+                Take Photo
+              </label>
               <label
                 htmlFor="photo-input"
                 className="block bg-blue-600 rounded-lg px-3 py-1.5 text-xs font-semibold text-center cursor-pointer active:bg-blue-700"
               >
-                {photoUrl ? 'Change Photo' : 'Upload Photo'}
+                {photoUrl ? 'Choose from Gallery' : 'Upload Photo'}
               </label>
               {photoUrl && (
                 <button
