@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 
 interface CriticalFlag { flag: string; type: string }
@@ -72,6 +72,9 @@ export default function FCCMemberEditPage() {
   // Photo state
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   // Member base fields
   const [full_name, setFullName] = useState('');
@@ -209,6 +212,67 @@ export default function FCCMemberEditPage() {
     }
   }
 
+  const openCamera = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 640 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setShowCamera(true);
+      // Wait for video element to mount, then attach stream
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+        }
+      }, 100);
+    } catch {
+      setError('Camera access denied. Check browser permissions.');
+    }
+  }, []);
+
+  const closeCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    setShowCamera(false);
+  }, []);
+
+  const capturePhoto = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    closeCamera();
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
+      setPhotoUploading(true);
+      setError(null);
+      try {
+        const resized = await resizeImage(new File([blob], 'camera.jpg', { type: 'image/jpeg' }), 400, 0.85);
+        const formData = new FormData();
+        formData.append('photo', resized, 'photo.jpg');
+        const res = await fetch(`/api/fcc/members/${memberId}/photo`, {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Upload failed');
+        setPhotoUrl(data.photo_url);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Photo upload failed');
+      } finally {
+        setPhotoUploading(false);
+      }
+    }, 'image/jpeg', 0.9);
+  }, [closeCamera, memberId]);
+
   async function handlePhotoRemove() {
     setPhotoUploading(true);
     setError(null);
@@ -251,6 +315,26 @@ export default function FCCMemberEditPage() {
 
   return (
     <main className="min-h-screen bg-slate-900 text-white">
+      {/* Camera modal */}
+      {showCamera && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3">
+            <p className="text-white font-bold text-sm">Take Photo</p>
+            <button onClick={closeCamera} className="text-white text-sm font-semibold bg-slate-800 rounded-lg px-3 py-1.5">Cancel</button>
+          </div>
+          <div className="flex-1 flex items-center justify-center overflow-hidden">
+            <video ref={videoRef} autoPlay playsInline muted className="max-w-full max-h-full object-contain" />
+          </div>
+          <div className="p-4 flex justify-center">
+            <button
+              onClick={capturePhoto}
+              className="w-16 h-16 rounded-full bg-white border-4 border-slate-400 active:bg-slate-200 transition-colors"
+              aria-label="Capture photo"
+            />
+          </div>
+        </div>
+      )}
+
       <header className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-800">
         <a href="/fcc/edit" aria-label="Back to profiles" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
         <h1 className="text-lg font-bold flex-1">{full_name}</h1>
@@ -283,27 +367,19 @@ export default function FCCMemberEditPage() {
             <div className="space-y-1.5">
               <input
                 type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handlePhotoUpload}
-                className="hidden"
-                id="camera-input"
-                disabled={photoUploading}
-              />
-              <input
-                type="file"
                 accept="image/jpeg,image/png"
                 onChange={handlePhotoUpload}
                 className="hidden"
                 id="photo-input"
                 disabled={photoUploading}
               />
-              <label
-                htmlFor="camera-input"
-                className="block bg-amber-600 rounded-lg px-3 py-1.5 text-xs font-bold text-black text-center cursor-pointer active:bg-amber-700"
+              <button
+                onClick={openCamera}
+                disabled={photoUploading}
+                className="block w-full bg-amber-600 rounded-lg px-3 py-1.5 text-xs font-bold text-black text-center active:bg-amber-700 disabled:opacity-50"
               >
                 Take Photo
-              </label>
+              </button>
               <label
                 htmlFor="photo-input"
                 className="block bg-blue-600 rounded-lg px-3 py-1.5 text-xs font-semibold text-center cursor-pointer active:bg-blue-700"
