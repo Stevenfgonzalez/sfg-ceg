@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { logEvent } from '@/lib/analytics';
 import {
   SAFE_ZONES,
@@ -10,7 +10,6 @@ import {
   findNearestZones,
   type SafeZone,
 } from './data/safe-zones';
-import { MOCK_HOUSEHOLD } from './data/mock-fcc-household';
 
 type Screen = 'home' | 'find_safe_zone' | 'need_help' | 'post_911';
 
@@ -463,17 +462,42 @@ function ResourceLink({
 
 function Post911Screen({ onReturn }: { onReturn: () => void }) {
   const [notifiedContacts, setNotifiedContacts] = useState(false);
-  const [checklist, setChecklist] = useState({ door: false, dog: false, meds: false, directive: false });
+  const [checklist, setChecklist] = useState({ door: false, meds: false, directive: false });
+  const [household, setHousehold] = useState<{
+    access_code?: string; hazards?: string; best_door?: string; animals?: string;
+    fcc_members?: { directive_location?: string | null }[];
+    fcc_emergency_contacts?: { id: string; name: string; relation: string; phone: string }[];
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch('/api/fcc/household');
+        const data = await res.json();
+        setHousehold(data.household || null);
+      } catch {
+        // not logged in or no household
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
 
   const toggleCheck = (key: keyof typeof checklist) => {
     setChecklist((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const accessCode = household?.access_code || '';
+  const hazards = household?.hazards;
+  const contacts = household?.fcc_emergency_contacts || [];
+  const directive = household?.fcc_members?.[0]?.directive_location;
+
   const checklistItems: Array<{ key: keyof typeof checklist; label: string; detail: string }> = [
-    { key: 'door', label: 'Unlock the front door', detail: MOCK_HOUSEHOLD.access.bestDoor },
-    { key: 'dog', label: 'Secure the dog', detail: MOCK_HOUSEHOLD.access.dogs },
+    { key: 'door', label: 'Unlock the front door', detail: household?.best_door || 'Make entry clear for EMS' },
     { key: 'meds', label: 'Gather current medications', detail: 'Bring med bottles to the door if possible' },
-    { key: 'directive', label: 'Locate advance directive', detail: MOCK_HOUSEHOLD.members[0].directiveLocation },
+    { key: 'directive', label: 'Locate advance directive', detail: directive || 'If applicable' },
   ];
 
   return (
@@ -481,27 +505,40 @@ function Post911Screen({ onReturn }: { onReturn: () => void }) {
       {/* Red priority header */}
       <div className="bg-gradient-to-r from-red-700 to-red-800 px-4 py-3.5 text-center">
         <p className="text-xs font-bold tracking-widest text-red-200/70 uppercase font-mono">911 Called — Help is on the way</p>
-        <p className="font-extrabold text-sm mt-1">Your Field Care Card is Active</p>
+        <p className="font-extrabold text-sm mt-1">
+          {household ? 'Your Field Care Card is Active' : 'Follow these steps while you wait'}
+        </p>
       </div>
 
       <div className="px-4 py-4 space-y-4">
         {/* ACCESS CODE */}
-        <div className="bg-gradient-to-br from-green-900 to-green-800 rounded-xl border-2 border-green-600 p-5 text-center shadow-lg shadow-green-900/20">
-          <p className="text-xs font-bold tracking-widest text-green-300 uppercase font-mono">Read This Code to Dispatch</p>
-          <p className="text-5xl font-extrabold tracking-[0.35em] font-mono mt-2">4827</p>
-          <p className="text-xs text-green-300 mt-2 leading-relaxed">
-            &quot;My SFG code is four-eight-two-seven&quot;<br/>
-            <span className="text-green-400/60">This gives EMS access to your care profiles</span>
-          </p>
-        </div>
+        {loading ? (
+          <div className="bg-gradient-to-br from-green-900 to-green-800 rounded-xl border-2 border-green-600 p-5 text-center">
+            <div className="w-6 h-6 border-2 border-green-400 border-t-transparent rounded-full animate-spin mx-auto" />
+          </div>
+        ) : accessCode ? (
+          <div className="bg-gradient-to-br from-green-900 to-green-800 rounded-xl border-2 border-green-600 p-5 text-center shadow-lg shadow-green-900/20">
+            <p className="text-xs font-bold tracking-widest text-green-300 uppercase font-mono">Read This Code to Dispatch</p>
+            <p className="text-5xl font-extrabold tracking-[0.35em] font-mono mt-2">{accessCode.split('').join(' ')}</p>
+            <p className="text-xs text-green-300 mt-2 leading-relaxed">
+              &quot;My SFG code is {accessCode.split('').join('-')}&quot;<br/>
+              <span className="text-green-400/60">This gives EMS access to your care profiles</span>
+            </p>
+          </div>
+        ) : (
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-5 text-center">
+            <p className="text-xs text-slate-400">Set up a Field Care Card to give EMS instant access to your medical info.</p>
+            <a href="/fcc" className="inline-block mt-3 text-xs text-blue-400 font-semibold">Create Field Care Card →</a>
+          </div>
+        )}
 
         {/* Hazard reminder */}
-        {MOCK_HOUSEHOLD.access.hazards && (
+        {hazards && (
           <div className="bg-gradient-to-r from-red-950 to-red-900 rounded-xl px-4 py-3 flex items-center gap-3">
             <span className="text-xl">⚠️</span>
             <div>
               <p className="text-xs font-bold text-red-300 uppercase tracking-wider font-mono">Remind Dispatch</p>
-              <p className="font-bold text-sm">{MOCK_HOUSEHOLD.access.hazards}</p>
+              <p className="font-bold text-sm">{hazards}</p>
             </div>
           </div>
         )}
@@ -531,43 +568,47 @@ function Post911Screen({ onReturn }: { onReturn: () => void }) {
         </div>
 
         {/* Emergency contacts */}
-        <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
-          <h3 className="text-xs font-bold tracking-widest text-blue-400 uppercase font-mono mb-3">Emergency Contacts</h3>
-          {MOCK_HOUSEHOLD.emergencyContacts.map((c, i) => (
-            <div key={i} className={`flex items-center justify-between py-2 ${i < MOCK_HOUSEHOLD.emergencyContacts.length - 1 ? 'border-b border-slate-700' : ''}`}>
-              <div>
-                <p className="text-sm font-semibold">{c.name}</p>
-                <p className="text-xs text-slate-400">{c.relation} · {c.phone}</p>
+        {contacts.length > 0 && (
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
+            <h3 className="text-xs font-bold tracking-widest text-blue-400 uppercase font-mono mb-3">Emergency Contacts</h3>
+            {contacts.map((c, i) => (
+              <div key={c.id} className={`flex items-center justify-between py-2 ${i < contacts.length - 1 ? 'border-b border-slate-700' : ''}`}>
+                <div>
+                  <p className="text-sm font-semibold">{c.name}</p>
+                  <p className="text-xs text-slate-400">{c.relation} · {c.phone}</p>
+                </div>
+                <a
+                  href={`tel:${c.phone.replace(/\D/g, '')}`}
+                  className="bg-gray-900 border border-slate-600 rounded-md px-3 py-1.5 text-xs font-semibold text-blue-400 active:bg-slate-700"
+                >
+                  Call
+                </a>
               </div>
-              <a
-                href={`tel:${c.phone.replace(/\D/g, '')}`}
-                className="bg-gray-900 border border-slate-600 rounded-md px-3 py-1.5 text-xs font-semibold text-blue-400 active:bg-slate-700"
+            ))}
+            {!notifiedContacts ? (
+              <button
+                onClick={() => { setNotifiedContacts(true); logEvent('911_notify_contacts'); }}
+                className="w-full mt-3 bg-blue-600 rounded-lg px-4 py-2.5 text-xs font-bold active:bg-blue-700 transition-colors"
               >
-                Call
-              </a>
-            </div>
-          ))}
-          {!notifiedContacts ? (
-            <button
-              onClick={() => { setNotifiedContacts(true); logEvent('911_notify_contacts'); }}
-              className="w-full mt-3 bg-blue-600 rounded-lg px-4 py-2.5 text-xs font-bold active:bg-blue-700 transition-colors"
-            >
-              Notify All Contacts
-            </button>
-          ) : (
-            <div className="w-full mt-3 bg-green-900 border border-green-700 rounded-lg px-4 py-2.5 text-xs font-bold text-green-400 text-center">
-              ✓ Contacts Notified
-            </div>
-          )}
-        </div>
+                Notify All Contacts
+              </button>
+            ) : (
+              <div className="w-full mt-3 bg-green-900 border border-green-700 rounded-lg px-4 py-2.5 text-xs font-bold text-green-400 text-center">
+                ✓ Contacts Notified
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
-        <a
-          href="/fcc"
-          className="block w-full bg-gradient-to-r from-blue-900 to-blue-800 rounded-xl px-5 py-3.5 border border-blue-600 active:from-blue-800 active:to-blue-700 transition-colors text-center font-bold text-sm tracking-wide"
-        >
-          View Full Care Profiles →
-        </a>
+        {household && (
+          <a
+            href="/fcc"
+            className="block w-full bg-gradient-to-r from-blue-900 to-blue-800 rounded-xl px-5 py-3.5 border border-blue-600 active:from-blue-800 active:to-blue-700 transition-colors text-center font-bold text-sm tracking-wide"
+          >
+            View Full Care Profiles →
+          </a>
+        )}
 
         <button
           onClick={onReturn}
