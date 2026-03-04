@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { log } from '@/lib/logger';
-import { createHmac } from 'crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { validateFccUnlockBody } from '@/lib/api-validation';
 
 const SESSION_TTL_HOURS = 4;
@@ -66,7 +66,9 @@ export async function POST(
 
   // Validate access
   if (accessMethod === 'resident_code') {
-    if (accessValue !== household.access_code) {
+    const a = Buffer.from(accessValue);
+    const b = Buffer.from(household.access_code || '');
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
       log({ level: 'warn', event: 'fcc_unlock_failed', route: `/api/fcc/${params.householdId}/unlock`, meta: { method: accessMethod } });
       return NextResponse.json({ error: 'Invalid access code' }, { status: 401 });
     }
@@ -112,13 +114,19 @@ export async function POST(
     .eq('household_id', params.householdId)
     .order('sort_order');
 
-  // Generate session token (signed JWT-like HMAC token)
+  // Generate session token (opaque HMAC token — no payload leaked)
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!secret) {
+    log({ level: 'error', event: 'fcc_unlock_missing_secret', route: `/api/fcc/${params.householdId}/unlock` });
+    return NextResponse.json({ error: 'Service misconfigured' }, { status: 503 });
+  }
+
   const now = Math.floor(Date.now() / 1000);
   const exp = now + SESSION_TTL_HOURS * 60 * 60;
+  const tokenId = randomBytes(16).toString('hex');
   const tokenPayload = `${params.householdId}:${accessMethod}:${now}:${exp}`;
-  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || 'dev-secret';
   const signature = createHmac('sha256', secret).update(tokenPayload).digest('hex');
-  const sessionToken = `${Buffer.from(tokenPayload).toString('base64')}.${signature}`;
+  const sessionToken = `${tokenId}.${signature}`;
 
   // Log access
   await supabase.from('fcc_access_logs').insert({

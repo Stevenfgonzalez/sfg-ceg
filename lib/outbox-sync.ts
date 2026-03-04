@@ -29,7 +29,8 @@ const CLOUD_ROUTES: Record<OutboxType, string> = {
 };
 
 // Map outbox type to edge-api route (field Wi-Fi — absolute URL to Pi 5)
-const EDGE_API_BASE = process.env.NEXT_PUBLIC_EDGE_API_BASE || 'http://10.42.0.1:3000';
+// No default — edge routing is disabled unless explicitly configured
+const EDGE_API_BASE = process.env.NEXT_PUBLIC_EDGE_API_BASE || '';
 const EDGE_ROUTES: Record<OutboxType, string> = {
   checkin: `${EDGE_API_BASE}/api/checkin`,
   help: `${EDGE_API_BASE}/api/checkin`,
@@ -49,6 +50,7 @@ const EDGE_CACHE_MS = 60_000;
  * Caches the result for 60s to avoid spamming the edge node.
  */
 async function isEdgeReachable(): Promise<boolean> {
+  if (!EDGE_API_BASE) return false;
   if (Date.now() - edgeCheckedAt < EDGE_CACHE_MS) return edgeAvailable;
   try {
     const ctrl = new AbortController();

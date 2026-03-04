@@ -18,14 +18,17 @@ export function normalizePhone(raw: string): string {
 
 // HMAC-SHA256 hash of normalized phone number with server-side secret.
 // Without the secret, an attacker who gets a DB dump cannot build a rainbow table.
-// Falls back to unsalted SHA-256 if secret is not set (legacy v1 behavior).
+// Falls back to unsalted SHA-256 only in development (required in production).
 export function hashPhone(raw: string): string {
   const normalized = normalizePhone(raw);
   const secret = process.env.PHONE_HASH_SECRET;
   if (secret) {
     return createHmac('sha256', secret).update(normalized).digest('hex');
   }
-  // Legacy fallback — unsalted SHA-256 (v1)
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('PHONE_HASH_SECRET is required in production');
+  }
+  // Dev-only fallback — unsalted SHA-256 (v1)
   return createHash('sha256').update(normalized).digest('hex');
 }
 

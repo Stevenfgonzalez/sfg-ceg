@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createBrowserClient } from '@/lib/supabase';
 
+/** Sanitize analytics props — flat object, safe types, bounded size */
+function sanitizeProps(raw: unknown): Record<string, string | number | boolean> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const clean: Record<string, string | number | boolean> = {};
+  let count = 0;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (count >= 20) break; // max 20 keys
+    const key = String(k).slice(0, 50);
+    if (typeof v === 'string') clean[key] = v.slice(0, 500);
+    else if (typeof v === 'number' && Number.isFinite(v)) clean[key] = v;
+    else if (typeof v === 'boolean') clean[key] = v;
+    count++;
+  }
+  return clean;
+}
+
 // POST /api/analytics — fire-and-forget event logging
 export async function POST(request: NextRequest) {
   try {
@@ -18,9 +34,9 @@ export async function POST(request: NextRequest) {
     const supabase = createBrowserClient();
     await supabase.from('analytics_events').insert({
       event: event.slice(0, 100),
-      props: props || {},
-      page: page?.slice(0, 200) || null,
-      referrer: referrer?.slice(0, 500) || null,
+      props: sanitizeProps(props),
+      page: typeof page === 'string' ? page.slice(0, 200) : null,
+      referrer: typeof referrer === 'string' ? referrer.slice(0, 500) : null,
     });
 
     return NextResponse.json({ ok: true });

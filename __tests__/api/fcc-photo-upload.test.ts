@@ -49,10 +49,18 @@ function mockChain(data: unknown, error: { message: string } | null = null) {
   };
 }
 
+// JPEG magic bytes: FF D8 FF E0; PNG magic bytes: 89 50 4E 47
+const JPEG_HEADER = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+const PNG_HEADER = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+
 function makeFormRequest(file: { size: number; type: string } | null): NextRequest {
   const formData = new FormData();
   if (file) {
-    const blob = new Blob([new ArrayBuffer(file.size)], { type: file.type });
+    // Build a buffer with valid magic bytes for image types
+    const buf = new Uint8Array(Math.max(file.size, 4));
+    if (file.type === 'image/jpeg') buf.set(JPEG_HEADER);
+    else if (file.type === 'image/png') buf.set(PNG_HEADER);
+    const blob = new Blob([buf], { type: file.type });
     formData.append('photo', blob, 'photo.jpg');
   }
   return new NextRequest('http://localhost/api/fcc/members/m-1/photo', {

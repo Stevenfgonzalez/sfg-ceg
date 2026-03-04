@@ -73,5 +73,6 @@ export type Priority = typeof VALID_PRIORITIES[number];
 // UUID validation regex
 export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Default incident ID — used when no incident-scoped QR is available
-export const DEFAULT_INCIDENT_ID = '00000000-0000-0000-0000-000000000000';
+// Default incident ID — from env in production, zero UUID fallback in dev only
+export const DEFAULT_INCIDENT_ID =
+  process.env.DEFAULT_INCIDENT_ID || '00000000-0000-0000-0000-000000000000';

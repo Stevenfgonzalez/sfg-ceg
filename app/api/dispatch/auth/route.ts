@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { computeDispatchToken, COOKIE_NAME } from '@/lib/dispatch-auth';
 import { log } from '@/lib/logger';
+import { timingSafeEqual } from 'crypto';
 
 // POST /api/dispatch/auth — verify PIN and set httpOnly cookie
 export async function POST(request: NextRequest) {
@@ -18,8 +19,8 @@ export async function POST(request: NextRequest) {
     request.headers.get('x-real-ip') ??
     'unknown';
 
-  // Strict rate limit: 5 attempts per minute per IP
-  const { allowed } = await checkRateLimit(`dispatch_auth:${ip}`, 5, 60_000);
+  // Strict rate limit: 3 attempts per minute per IP
+  const { allowed } = await checkRateLimit(`dispatch_auth:${ip}`, 3, 60_000);
   if (!allowed) {
     return NextResponse.json(
       { error: 'Too many attempts. Wait 60 seconds.' },
@@ -36,7 +37,10 @@ export async function POST(request: NextRequest) {
 
   const submittedPin = typeof body.pin === 'string' ? body.pin : '';
 
-  if (submittedPin !== pin) {
+  // Constant-time PIN comparison
+  const pinA = Buffer.from(submittedPin);
+  const pinB = Buffer.from(pin);
+  if (pinA.length !== pinB.length || !timingSafeEqual(pinA, pinB)) {
     log({ level: 'warn', event: 'dispatch_auth_failed', route: '/api/dispatch/auth' });
     return NextResponse.json({ error: 'Invalid PIN' }, { status: 401 });
   }

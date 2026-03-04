@@ -2,11 +2,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { log } from '@/lib/logger';
 import { validateFccAgencyBody } from '@/lib/api-validation';
+import { timingSafeEqual } from 'crypto';
 
 // POST /api/fcc/agency — admin seed endpoint (protected by FCC_ADMIN_KEY)
 export async function POST(request: NextRequest) {
   const adminKey = request.headers.get('x-admin-key');
-  if (!adminKey || adminKey !== process.env.FCC_ADMIN_KEY) {
+  const expected = process.env.FCC_ADMIN_KEY;
+  if (!adminKey || !expected) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  try {
+    const a = Buffer.from(adminKey);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  } catch {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

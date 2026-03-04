@@ -7,6 +7,14 @@ import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
 const PROTECTED_ROUTES = ['/fcc/edit', '/fcc/log', '/fcc/print'];
 // /fcc exactly (dashboard) is also protected, handled below
 
+// Allowed origins for CSRF verification on mutating API requests
+const ALLOWED_ORIGINS = new Set([
+  'https://ceg.sfg.ac',
+  ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:3000', 'http://localhost:3001'] : []),
+]);
+
+const MUTATION_METHODS = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
+
 export async function middleware(request: NextRequest) {
   const requestId = crypto.randomUUID();
   const requestHeaders = new Headers(request.headers);
@@ -18,12 +26,24 @@ export async function middleware(request: NextRequest) {
 
   response.headers.set('x-request-id', requestId);
 
+  // CSRF origin check for mutating API requests (POST/PUT/DELETE/PATCH)
+  const pathname = request.nextUrl.pathname;
+  if (pathname.startsWith('/api/') && MUTATION_METHODS.has(request.method)) {
+    // Exempt public anonymous endpoints (no auth cookie = no CSRF risk)
+    const isPublicApi = pathname.startsWith('/api/public/') || pathname.startsWith('/api/analytics');
+    if (!isPublicApi) {
+      const origin = request.headers.get('origin');
+      if (!origin || !ALLOWED_ORIGINS.has(origin)) {
+        return NextResponse.json({ error: 'Origin not allowed' }, { status: 403 });
+      }
+    }
+  }
+
   // Refresh Supabase auth session (keeps cookies fresh)
   const supabase = createAuthMiddlewareClient(request, response);
   const { data: { user } } = await supabase.auth.getUser();
 
   // Check protected routes
-  const pathname = request.nextUrl.pathname;
   const isProtected =
     pathname === '/fcc' ||
     PROTECTED_ROUTES.some((route) => pathname.startsWith(route));

@@ -7,6 +7,17 @@ import { getFccAuth } from '@/lib/fcc-auth';
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png'];
 
+// Magic bytes: JPEG starts with FF D8 FF, PNG starts with 89 50 4E 47
+const JPEG_MAGIC = [0xff, 0xd8, 0xff];
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47];
+
+function detectImageType(buffer: Buffer): 'image/jpeg' | 'image/png' | null {
+  if (buffer.length < 4) return null;
+  if (JPEG_MAGIC.every((b, i) => buffer[i] === b)) return 'image/jpeg';
+  if (PNG_MAGIC.every((b, i) => buffer[i] === b)) return 'image/png';
+  return null;
+}
+
 // POST /api/fcc/members/[memberId]/photo — upload photo (owner or editor)
 export async function POST(
   request: NextRequest,
@@ -54,21 +65,22 @@ export async function POST(
     return NextResponse.json({ error: 'Photo must be under 2MB' }, { status: 400 });
   }
 
-  // Accept common image types — client resizes to JPEG before upload
-  const photoType = photo.type || 'image/jpeg';
-  if (!ALLOWED_TYPES.includes(photoType) && photoType !== 'application/octet-stream') {
+  const buffer = Buffer.from(await photo.arrayBuffer());
+
+  // Verify actual file content via magic bytes — don't trust client MIME type
+  const detectedType = detectImageType(buffer);
+  if (!detectedType) {
     return NextResponse.json({ error: 'Photo must be JPEG or PNG' }, { status: 400 });
   }
 
-  const ext = photoType === 'image/png' ? 'png' : 'jpg';
+  const ext = detectedType === 'image/png' ? 'png' : 'jpg';
   const path = `${member.household_id}/${params.memberId}.${ext}`;
-  const buffer = Buffer.from(await photo.arrayBuffer());
 
   const { error: uploadErr } = await svc.storage
     .from('fcc-photos')
     .upload(path, buffer, {
       upsert: true,
-      contentType: ext === 'png' ? 'image/png' : 'image/jpeg',
+      contentType: detectedType,
     });
 
   if (uploadErr) {
