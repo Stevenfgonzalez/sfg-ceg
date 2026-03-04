@@ -66,6 +66,7 @@ describe('POST /api/fcc/[householdId]/request-code', () => {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       not: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue({ data: [], error: null }),
       single: vi.fn().mockResolvedValue({ data: null }),
     });
 
@@ -78,6 +79,7 @@ describe('POST /api/fcc/[householdId]/request-code', () => {
     mockServiceFrom.mockReturnValue({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue({ data: [MOCK_HOUSEHOLD], error: null }),
       single: vi.fn().mockResolvedValue({ data: MOCK_HOUSEHOLD }),
     });
     mockCheckRateLimit.mockResolvedValue({ allowed: false });
@@ -91,6 +93,7 @@ describe('POST /api/fcc/[householdId]/request-code', () => {
     mockServiceFrom.mockReturnValue({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue({ data: [MOCK_HOUSEHOLD], error: null }),
       single: vi.fn().mockResolvedValue({ data: MOCK_HOUSEHOLD }),
     });
 
@@ -105,10 +108,11 @@ describe('POST /api/fcc/[householdId]/request-code', () => {
     const callIndex = { value: 0 };
     mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
-      // Calls 1-2: getFccAuth (owner check + caregiver check) and household lookup
+      // Calls 1-2: getFccAuth owner check (limit) and household lookup (single)
       if (callIndex.value <= 2) return {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue({ data: [MOCK_HOUSEHOLD], error: null }),
         single: vi.fn().mockResolvedValue({ data: MOCK_HOUSEHOLD }),
       };
       // Call 3: temp code insert
@@ -134,10 +138,11 @@ describe('POST /api/fcc/[householdId]/request-code', () => {
     const callIndex = { value: 0 };
     mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
-      // Calls 1-2: getFccAuth and household lookup
+      // Calls 1-2: getFccAuth owner check (limit) and household lookup (single)
       if (callIndex.value <= 2) return {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue({ data: [MOCK_HOUSEHOLD], error: null }),
         single: vi.fn().mockResolvedValue({ data: MOCK_HOUSEHOLD }),
       };
       // Call 3: temp code insert (fail)

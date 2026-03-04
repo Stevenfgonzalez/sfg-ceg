@@ -84,6 +84,11 @@ export default function FCCEditPage() {
     try {
       const res = await fetch('/api/fcc/household');
       const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to load household');
+        setScreen('setup');
+        return;
+      }
       if (data.household) {
         setHousehold(data.household);
         populateHouseholdForm(data.household);
@@ -91,7 +96,8 @@ export default function FCCEditPage() {
       } else {
         setScreen('setup');
       }
-    } catch {
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Network error loading household');
       setScreen('setup');
     }
   }
@@ -116,6 +122,11 @@ export default function FCCEditPage() {
         body: JSON.stringify(hForm),
       });
       const data = await res.json();
+      if (res.status === 409) {
+        // Household already exists — just load it
+        await loadHousehold();
+        return;
+      }
       if (!res.ok) throw new Error(data.error || 'Failed to save');
       setHousehold(data.household);
       if (isCreate) {

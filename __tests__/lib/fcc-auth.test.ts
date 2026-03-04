@@ -8,7 +8,7 @@ function mockSupabase(ownerResult: unknown, caregiverResult: unknown) {
         return {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: ownerResult, error: ownerResult ? null : { code: 'PGRST116' } }),
+          limit: vi.fn().mockResolvedValue({ data: ownerResult ? [ownerResult] : [], error: null }),
         };
       }
       if (table === 'fcc_caregivers') {

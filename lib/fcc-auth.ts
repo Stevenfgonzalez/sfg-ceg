@@ -27,12 +27,14 @@ export async function getFccAuth(
   userId: string,
   requiredRoles?: FccRole[],
 ): Promise<FccAuthResult | null> {
-  // Check owner first
-  const { data: ownedHousehold } = await supabase
+  // Check owner first (limit 1 to handle duplicates gracefully)
+  const { data: ownedHouseholds } = await supabase
     .from('fcc_households')
     .select('id')
     .eq('owner_id', userId)
-    .single();
+    .limit(1);
+
+  const ownedHousehold = ownedHouseholds?.[0] ?? null;
 
   if (ownedHousehold) {
     const result: FccAuthResult = {

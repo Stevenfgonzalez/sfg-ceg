@@ -53,6 +53,7 @@ describe('POST /api/fcc/access-logs/[logId]/revoke', () => {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       not: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue({ data: [], error: null }),
       single: vi.fn().mockResolvedValue({ data: null, error: null }),
     });
 
@@ -70,7 +71,7 @@ describe('POST /api/fcc/access-logs/[logId]/revoke', () => {
       if (callIndex.value === 1) return {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: MOCK_HOUSEHOLD, error: null }),
+        limit: vi.fn().mockResolvedValue({ data: [MOCK_HOUSEHOLD], error: null }),
       };
       return {
         select: vi.fn().mockReturnThis(),
@@ -91,7 +92,7 @@ describe('POST /api/fcc/access-logs/[logId]/revoke', () => {
       if (callIndex.value === 1) return {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: MOCK_HOUSEHOLD, error: null }),
+        limit: vi.fn().mockResolvedValue({ data: [MOCK_HOUSEHOLD], error: null }),
       };
       return {
         select: vi.fn().mockReturnThis(),
@@ -115,7 +116,7 @@ describe('POST /api/fcc/access-logs/[logId]/revoke', () => {
       if (callIndex.value === 1) return {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: MOCK_HOUSEHOLD, error: null }),
+        limit: vi.fn().mockResolvedValue({ data: [MOCK_HOUSEHOLD], error: null }),
       };
       return {
         select: vi.fn().mockReturnThis(),
@@ -141,7 +142,7 @@ describe('POST /api/fcc/access-logs/[logId]/revoke', () => {
       if (callIndex.value === 1) return {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: MOCK_HOUSEHOLD, error: null }),
+        limit: vi.fn().mockResolvedValue({ data: [MOCK_HOUSEHOLD], error: null }),
       };
       if (callIndex.value === 2) return {
         select: vi.fn().mockReturnThis(),

@@ -39,6 +39,7 @@ function mockChain(data: unknown, error: { message: string; code?: string } | nu
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     not: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue({ data: data ? [data] : [], error }),
     single: vi.fn().mockResolvedValue({ data, error }),
     insert: vi.fn().mockReturnThis(),
     update: vi.fn().mockReturnThis(),
@@ -139,7 +140,14 @@ describe('POST /api/fcc/household', () => {
 
   it('creates household and returns 201', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockServiceFrom.mockReturnValue(mockChain(MOCK_HOUSEHOLD));
+    const callIndex = { value: 0 };
+    mockServiceFrom.mockImplementation(() => {
+      callIndex.value++;
+      // First call: duplicate check (no existing household)
+      if (callIndex.value === 1) return mockChain(null);
+      // Second call: insert
+      return mockChain(MOCK_HOUSEHOLD);
+    });
 
     const res = await POST(makeRequest('POST', {
       name: 'Delgado Household',

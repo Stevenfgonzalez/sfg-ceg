@@ -58,6 +58,18 @@ export async function POST(request: NextRequest) {
   }
 
   const svc = createServiceClient();
+
+  // Check if user already owns a household (prevent duplicates)
+  const { data: existing } = await svc
+    .from('fcc_households')
+    .select('id')
+    .eq('owner_id', user.id)
+    .limit(1);
+
+  if (existing && existing.length > 0) {
+    return NextResponse.json({ error: 'Household already exists', household_id: existing[0].id }, { status: 409 });
+  }
+
   const { data, error } = await svc
     .from('fcc_households')
     .insert({
