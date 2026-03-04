@@ -44,7 +44,7 @@ interface Household {
   fcc_emergency_contacts?: Contact[];
 }
 
-type Screen = 'loading' | 'setup' | 'overview' | 'household_edit' | 'add_member' | 'add_contact' | 'edit_contact';
+type Screen = 'loading' | 'wizard' | 'household_edit' | 'add_member' | 'add_contact' | 'edit_contact';
 
 const CODE_STATUS_LABELS: Record<string, string> = {
   full_code: 'Full Code',
@@ -52,9 +52,12 @@ const CODE_STATUS_LABELS: Record<string, string> = {
   dnr_polst: 'DNR/POLST',
 };
 
+const STEP_LABELS = ['Household', 'Members', 'Contacts'];
+
 export default function FCCEditPage() {
   const router = useRouter();
   const [screen, setScreen] = useState<Screen>('loading');
+  const [step, setStep] = useState(1); // 1=Household, 2=Members, 3=Contacts
   const [household, setHousehold] = useState<Household | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,29 +79,41 @@ export default function FCCEditPage() {
   const [cForm, setCForm] = useState({ name: '', relation: '', phone: '' });
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadHousehold();
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadHousehold(); }, []);
 
-  async function loadHousehold() {
+  async function loadHousehold(goToStep?: number) {
     try {
       const res = await fetch('/api/fcc/household');
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || 'Failed to load household');
-        setScreen('setup');
+        setScreen('wizard');
+        setStep(1);
         return;
       }
       if (data.household) {
         setHousehold(data.household);
         populateHouseholdForm(data.household);
-        setScreen('overview');
+        setScreen('wizard');
+        if (goToStep) {
+          setStep(goToStep);
+        } else {
+          // Auto-detect best step for onboarding
+          const members = data.household.fcc_members || [];
+          const contacts = data.household.fcc_emergency_contacts || [];
+          if (members.length === 0) setStep(2);
+          else if (contacts.length === 0) setStep(3);
+          else setStep(1); // All done, show household overview
+        }
       } else {
-        setScreen('setup');
+        setScreen('wizard');
+        setStep(1);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Network error loading household');
-      setScreen('setup');
+      setScreen('wizard');
+      setStep(1);
     }
   }
 
@@ -123,17 +138,15 @@ export default function FCCEditPage() {
       });
       const data = await res.json();
       if (res.status === 409) {
-        // Household already exists — just load it
-        await loadHousehold();
+        await loadHousehold(2);
         return;
       }
       if (!res.ok) throw new Error(data.error || 'Failed to save');
       setHousehold(data.household);
       if (isCreate) {
-        // Reload to get full nested data
-        await loadHousehold();
+        await loadHousehold(2);
       } else {
-        setScreen('overview');
+        setScreen('wizard');
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed');
@@ -154,8 +167,7 @@ export default function FCCEditPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to add member');
       setMForm({ full_name: '', date_of_birth: '', baseline_mental: '', primary_language: 'English', code_status: 'full_code', directive_location: '' });
-      await loadHousehold();
-      setScreen('overview');
+      await loadHousehold(2);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Add failed');
     } finally {
@@ -168,7 +180,7 @@ export default function FCCEditPage() {
     try {
       const res = await fetch(`/api/fcc/members/${memberId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete');
-      await loadHousehold();
+      await loadHousehold(2);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Delete failed');
     }
@@ -188,8 +200,7 @@ export default function FCCEditPage() {
       if (!res.ok) throw new Error(data.error || 'Failed to save contact');
       setCForm({ name: '', relation: '', phone: '' });
       setEditingContactId(null);
-      await loadHousehold();
-      setScreen('overview');
+      await loadHousehold(3);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed');
     } finally {
@@ -202,7 +213,7 @@ export default function FCCEditPage() {
     try {
       const res = await fetch(`/api/fcc/contacts/${contactId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete');
-      await loadHousehold();
+      await loadHousehold(3);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Delete failed');
     }
@@ -220,35 +231,11 @@ export default function FCCEditPage() {
     );
   }
 
-  // ── SETUP (Create Household) ──
-  if (screen === 'setup') {
-    return (
-      <main className="min-h-screen bg-slate-900 text-white">
-        <Header title="Create Household" backHref="/fcc" />
-        <div className="px-4 pt-5 space-y-4 pb-8">
-          <div className="text-center">
-            <p className="text-xs font-bold tracking-widest text-amber-500 uppercase font-mono">Step 1</p>
-            <p className="text-sm text-slate-400 mt-1">Set up your household profile</p>
-          </div>
-          {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
-          <HouseholdForm form={hForm} setForm={setHForm} />
-          <button
-            onClick={() => saveHousehold(true)}
-            disabled={saving || !hForm.name || !hForm.address_line1 || !hForm.city || !hForm.state || !hForm.zip || !hForm.access_code}
-            className="w-full bg-amber-600 rounded-xl px-4 py-3.5 text-sm font-bold text-black active:bg-amber-700 transition-colors disabled:opacity-50"
-          >
-            {saving ? 'Creating...' : 'Create Household'}
-          </button>
-        </div>
-      </main>
-    );
-  }
-
-  // ── HOUSEHOLD EDIT ──
+  // ── HOUSEHOLD EDIT (sub-screen) ──
   if (screen === 'household_edit') {
     return (
       <main className="min-h-screen bg-slate-900 text-white">
-        <Header title="Edit Household" onBack={() => setScreen('overview')} />
+        <Header title="Edit Household" onBack={() => setScreen('wizard')} />
         <div className="px-4 pt-5 space-y-4 pb-8">
           {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
           <HouseholdForm form={hForm} setForm={setHForm} />
@@ -264,16 +251,12 @@ export default function FCCEditPage() {
     );
   }
 
-  // ── ADD MEMBER ──
+  // ── ADD MEMBER (sub-screen) ──
   if (screen === 'add_member') {
     return (
       <main className="min-h-screen bg-slate-900 text-white">
-        <Header title="Add Member" onBack={() => setScreen('overview')} />
+        <Header title="Add Member" onBack={() => setScreen('wizard')} />
         <div className="px-4 pt-5 space-y-4 pb-8">
-          <div className="text-center">
-            <p className="text-xs font-bold tracking-widest text-amber-500 uppercase font-mono">New Member</p>
-            <p className="text-xs text-slate-400 mt-1">Add a household member (max 6)</p>
-          </div>
           {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
           <Section title="Identification">
             <Input label="Full Name" value={mForm.full_name} onChange={(v) => setMForm({ ...mForm, full_name: v })} required />
@@ -307,12 +290,12 @@ export default function FCCEditPage() {
     );
   }
 
-  // ── ADD / EDIT CONTACT ──
+  // ── ADD / EDIT CONTACT (sub-screen) ──
   if (screen === 'add_contact' || screen === 'edit_contact') {
     const isEdit = screen === 'edit_contact';
     return (
       <main className="min-h-screen bg-slate-900 text-white">
-        <Header title={isEdit ? 'Edit Contact' : 'Add Contact'} onBack={() => { setScreen('overview'); setEditingContactId(null); }} />
+        <Header title={isEdit ? 'Edit Contact' : 'Add Contact'} onBack={() => { setScreen('wizard'); setEditingContactId(null); }} />
         <div className="px-4 pt-5 space-y-4 pb-8">
           {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
           <Section title="Emergency Contact">
@@ -332,107 +315,233 @@ export default function FCCEditPage() {
     );
   }
 
-  // ── OVERVIEW ──
-  const address = [household!.address_line1, household!.address_line2].filter(Boolean).join(', ') + `, ${household!.city}, ${household!.state} ${household!.zip}`;
-
+  // ── WIZARD ──
   return (
     <main className="min-h-screen bg-slate-900 text-white">
-      <Header title="Edit Profiles" backHref="/fcc" />
+      <Header title="Field Care Card Setup" backHref="/fcc" />
 
-      <div className="px-4 pt-5 space-y-4 pb-8">
-        <div className="text-center">
-          <p className="text-xs font-bold tracking-widest text-amber-500 uppercase font-mono">Profile Builder</p>
-          <p className="text-xs text-slate-400 mt-1">Manage household and member profiles</p>
+      <div className="px-4 pt-5 pb-8">
+        {/* Step indicator */}
+        <div className="flex items-center justify-center gap-1 mb-6">
+          {STEP_LABELS.map((label, i) => {
+            const stepNum = i + 1;
+            const isActive = step === stepNum;
+            const isDone = household
+              ? (stepNum === 1) ||
+                (stepNum === 2 && members.length > 0) ||
+                (stepNum === 3 && contacts.length > 0)
+              : false;
+            return (
+              <button
+                key={label}
+                onClick={() => { if (household || stepNum === 1) setStep(stepNum); }}
+                disabled={!household && stepNum > 1}
+                className="flex items-center gap-1 group disabled:opacity-40"
+              >
+                <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                  isActive ? 'bg-amber-500 text-black' :
+                  isDone ? 'bg-green-700 text-white' :
+                  'bg-slate-700 text-slate-400'
+                }`}>
+                  {isDone && !isActive ? '\u2713' : stepNum}
+                </span>
+                <span className={`text-[10px] font-mono uppercase tracking-wider transition-colors ${
+                  isActive ? 'text-amber-400' : 'text-slate-500'
+                }`}>
+                  {label}
+                </span>
+                {i < 2 && <span className="text-slate-600 mx-1">—</span>}
+              </button>
+            );
+          })}
         </div>
 
         {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
-        {/* Household info */}
-        <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
-          <p className="text-xs font-bold text-amber-500 uppercase tracking-wider font-mono mb-2">Household</p>
-          <p className="font-bold text-base">{household!.name}</p>
-          <p className="text-xs text-slate-400 mt-0.5">{address}</p>
-          {household!.hazards && <p className="text-xs text-red-400 mt-1">{household!.hazards}</p>}
-          <button
-            onClick={() => { populateHouseholdForm(household!); setScreen('household_edit'); }}
-            className="mt-3 w-full bg-gray-900 border border-slate-700 rounded-lg px-4 py-2.5 text-xs font-semibold active:bg-slate-800 transition-colors"
-          >
-            Edit Household Info
-          </button>
-        </div>
-
-        {/* Members */}
-        <div>
-          <p className="text-xs font-bold text-amber-500 uppercase tracking-wider font-mono mb-3">Members ({members.length}/6)</p>
-          {members.map((member) => {
-            const clinical = member.fcc_member_clinical?.[0];
-            const flagCount = (clinical?.critical_flags as { flag: string }[] | undefined)?.length || 0;
-            const medCount = (clinical?.medications as { name: string }[] | undefined)?.length || 0;
-            const equipCount = (clinical?.equipment as { item: string }[] | undefined)?.length || 0;
-            return (
-              <div key={member.id} className="bg-slate-800 rounded-xl border border-slate-700 p-4 mb-2">
-                <div className="flex items-center justify-between">
-                  <a href={`/fcc/edit/${member.id}`} className="flex-1 active:opacity-70">
-                    <p className="font-bold text-sm">{member.full_name}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      DOB: {member.date_of_birth} · {CODE_STATUS_LABELS[member.code_status] || member.code_status}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {flagCount} flag{flagCount !== 1 ? 's' : ''} · {medCount} med{medCount !== 1 ? 's' : ''} · {equipCount} equip
-                    </p>
-                  </a>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <a href={`/fcc/edit/${member.id}`} className="text-blue-400 text-xs font-semibold">Edit</a>
-                    <button onClick={() => deleteMember(member.id)} className="text-red-400 text-xs font-semibold">Del</button>
-                  </div>
+        {/* STEP 1: Household */}
+        {step === 1 && (
+          <div className="space-y-4">
+            {!household ? (
+              <>
+                <div className="text-center mb-2">
+                  <p className="text-sm text-slate-400">Set up your household profile</p>
                 </div>
-              </div>
-            );
-          })}
-          {members.length < 6 && (
-            <button
-              onClick={() => { setError(null); setScreen('add_member'); }}
-              className="w-full mt-2 bg-blue-600 rounded-xl px-4 py-3 text-sm font-bold active:bg-blue-700 transition-colors"
-            >
-              + Add Member
-            </button>
-          )}
-        </div>
-
-        {/* Emergency Contacts */}
-        <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
-          <p className="text-xs font-bold text-amber-500 uppercase tracking-wider font-mono mb-2">Emergency Contacts</p>
-          {contacts.length === 0 && (
-            <p className="text-xs text-slate-500 italic py-2">No contacts added yet</p>
-          )}
-          {contacts.map((c, i) => (
-            <div key={c.id} className={`flex items-center justify-between py-2 ${i < contacts.length - 1 ? 'border-b border-slate-700' : ''}`}>
-              <div>
-                <p className="font-semibold text-sm">{c.name}</p>
-                <p className="text-xs text-slate-400">{c.relation} · {c.phone}</p>
-              </div>
-              <div className="flex gap-2 shrink-0">
+                <HouseholdForm form={hForm} setForm={setHForm} />
                 <button
-                  onClick={() => {
-                    setCForm({ name: c.name, relation: c.relation, phone: c.phone });
-                    setEditingContactId(c.id);
-                    setScreen('edit_contact');
-                  }}
-                  className="text-xs text-blue-400 active:text-blue-300"
+                  onClick={() => saveHousehold(true)}
+                  disabled={saving || !hForm.name || !hForm.address_line1 || !hForm.city || !hForm.state || !hForm.zip || !hForm.access_code}
+                  className="w-full bg-amber-600 rounded-xl px-4 py-3.5 text-sm font-bold text-black active:bg-amber-700 transition-colors disabled:opacity-50"
                 >
-                  Edit
+                  {saving ? 'Creating...' : 'Create Household & Continue'}
                 </button>
-                <button onClick={() => deleteContact(c.id)} className="text-xs text-red-400 active:text-red-300">Del</button>
-              </div>
+              </>
+            ) : (
+              <>
+                <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
+                  <p className="text-xs font-bold text-amber-500 uppercase tracking-wider font-mono mb-2">Household</p>
+                  <p className="font-bold text-base">{household.name}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {[household.address_line1, household.address_line2].filter(Boolean).join(', ')}, {household.city}, {household.state} {household.zip}
+                  </p>
+                  {household.access_code && (
+                    <p className="text-xs text-slate-500 mt-1 font-mono">Access code: {household.access_code}</p>
+                  )}
+                  {household.hazards && <p className="text-xs text-red-400 mt-1">{household.hazards}</p>}
+                  <button
+                    onClick={() => { populateHouseholdForm(household); setScreen('household_edit'); }}
+                    className="mt-3 w-full bg-gray-900 border border-slate-700 rounded-lg px-4 py-2.5 text-xs font-semibold active:bg-slate-800 transition-colors"
+                  >
+                    Edit Household Info
+                  </button>
+                </div>
+                <button
+                  onClick={() => setStep(2)}
+                  className="w-full bg-amber-600 rounded-xl px-4 py-3.5 text-sm font-bold text-black active:bg-amber-700 transition-colors"
+                >
+                  Next: Add Members →
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* STEP 2: Members */}
+        {step === 2 && household && (
+          <div className="space-y-4">
+            <div className="text-center mb-2">
+              <p className="text-sm text-slate-400">Add people who live in your household</p>
             </div>
-          ))}
-          <button
-            onClick={() => { setCForm({ name: '', relation: '', phone: '' }); setError(null); setScreen('add_contact'); }}
-            className="w-full mt-3 bg-gray-900 border border-slate-700 rounded-lg px-4 py-2.5 text-xs font-semibold active:bg-slate-800 transition-colors"
-          >
-            + Add Contact
-          </button>
-        </div>
+
+            {members.length > 0 && (
+              <div>
+                <p className="text-xs font-bold text-amber-500 uppercase tracking-wider font-mono mb-3">
+                  Members ({members.length}/6)
+                </p>
+                {members.map((member) => {
+                  const clinical = member.fcc_member_clinical?.[0];
+                  const flagCount = (clinical?.critical_flags as { flag: string }[] | undefined)?.length || 0;
+                  const medCount = (clinical?.medications as { name: string }[] | undefined)?.length || 0;
+                  const equipCount = (clinical?.equipment as { item: string }[] | undefined)?.length || 0;
+                  return (
+                    <div key={member.id} className="bg-slate-800 rounded-xl border border-slate-700 p-4 mb-2">
+                      <div className="flex items-center justify-between">
+                        <a href={`/fcc/edit/${member.id}`} className="flex-1 active:opacity-70">
+                          <p className="font-bold text-sm">{member.full_name}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            DOB: {member.date_of_birth} · {CODE_STATUS_LABELS[member.code_status] || member.code_status}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {flagCount} flag{flagCount !== 1 ? 's' : ''} · {medCount} med{medCount !== 1 ? 's' : ''} · {equipCount} equip
+                          </p>
+                        </a>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <a href={`/fcc/edit/${member.id}`} className="text-blue-400 text-xs font-semibold">Edit</a>
+                          <button onClick={() => deleteMember(member.id)} className="text-red-400 text-xs font-semibold">Del</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {members.length === 0 && (
+              <div className="bg-slate-800/50 rounded-xl border border-dashed border-slate-600 p-6 text-center">
+                <p className="text-slate-400 text-sm">No members added yet</p>
+                <p className="text-[10px] text-slate-500 mt-1">Add at least one household member</p>
+              </div>
+            )}
+
+            {members.length < 6 && (
+              <button
+                onClick={() => { setError(null); setScreen('add_member'); }}
+                className="w-full bg-blue-600 rounded-xl px-4 py-3 text-sm font-bold active:bg-blue-700 transition-colors"
+              >
+                + Add Member
+              </button>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setStep(1)}
+                className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm font-semibold active:bg-slate-700 transition-colors"
+              >
+                ← Back
+              </button>
+              <button
+                onClick={() => setStep(3)}
+                className="flex-1 bg-amber-600 rounded-xl px-4 py-3 text-sm font-bold text-black active:bg-amber-700 transition-colors"
+              >
+                Next: Contacts →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: Emergency Contacts */}
+        {step === 3 && household && (
+          <div className="space-y-4">
+            <div className="text-center mb-2">
+              <p className="text-sm text-slate-400">Add emergency contacts for EMS to call</p>
+            </div>
+
+            {contacts.length > 0 && (
+              <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
+                <p className="text-xs font-bold text-amber-500 uppercase tracking-wider font-mono mb-2">Emergency Contacts</p>
+                {contacts.map((c, i) => (
+                  <div key={c.id} className={`flex items-center justify-between py-2 ${i < contacts.length - 1 ? 'border-b border-slate-700' : ''}`}>
+                    <div>
+                      <p className="font-semibold text-sm">{c.name}</p>
+                      <p className="text-xs text-slate-400">{c.relation} · {c.phone}</p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button
+                        onClick={() => {
+                          setCForm({ name: c.name, relation: c.relation, phone: c.phone });
+                          setEditingContactId(c.id);
+                          setScreen('edit_contact');
+                        }}
+                        className="text-xs text-blue-400 active:text-blue-300"
+                      >
+                        Edit
+                      </button>
+                      <button onClick={() => deleteContact(c.id)} className="text-xs text-red-400 active:text-red-300">Del</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {contacts.length === 0 && (
+              <div className="bg-slate-800/50 rounded-xl border border-dashed border-slate-600 p-6 text-center">
+                <p className="text-slate-400 text-sm">No emergency contacts yet</p>
+                <p className="text-[10px] text-slate-500 mt-1">Add at least one emergency contact</p>
+              </div>
+            )}
+
+            <button
+              onClick={() => { setCForm({ name: '', relation: '', phone: '' }); setError(null); setScreen('add_contact'); }}
+              className="w-full bg-blue-600 rounded-xl px-4 py-3 text-sm font-bold active:bg-blue-700 transition-colors"
+            >
+              + Add Contact
+            </button>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setStep(2)}
+                className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm font-semibold active:bg-slate-700 transition-colors"
+              >
+                ← Back
+              </button>
+              <a
+                href="/fcc"
+                className="flex-1 bg-green-600 rounded-xl px-4 py-3 text-sm font-bold text-center active:bg-green-700 transition-colors"
+              >
+                Done — View Dashboard
+              </a>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
@@ -483,7 +592,7 @@ function Input({ label, value, onChange, type = 'text', placeholder, required }:
 
 function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   return (
-    <div className="bg-red-900/50 border border-red-700 rounded-lg px-4 py-3 flex items-center justify-between">
+    <div className="bg-red-900/50 border border-red-700 rounded-lg px-4 py-3 flex items-center justify-between mb-4">
       <p className="text-xs text-red-300">{message}</p>
       <button onClick={onDismiss} className="text-red-400 text-xs ml-2">×</button>
     </div>
