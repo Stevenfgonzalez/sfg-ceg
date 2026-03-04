@@ -36,26 +36,31 @@ const FLAG_TYPES = ['allergy', 'med', 'equipment', 'safety'] as const;
 
 function resizeImage(file: File, maxSize: number, quality: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      let { width, height } = img;
-      if (width > maxSize || height > maxSize) {
-        const ratio = Math.min(maxSize / width, maxSize / height);
-        width = Math.round(width * ratio);
-        height = Math.round(height * ratio);
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0, width, height);
-      canvas.toBlob((blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error('Canvas toBlob failed'));
-      }, 'image/jpeg', quality);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxSize || height > maxSize) {
+          const ratio = Math.min(maxSize / width, maxSize / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('Canvas toBlob failed'));
+        }, 'image/jpeg', quality);
+      };
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = reader.result as string;
     };
-    img.onerror = () => reject(new Error('Failed to load image'));
-    img.src = URL.createObjectURL(file);
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
   });
 }
 
@@ -204,12 +209,10 @@ export default function FCCMemberEditPage() {
         body: formData,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(`${res.status}: ${data.error || 'Upload failed'}`);
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
       setPhotoUrl(data.photo_url);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Photo upload failed';
-      setError(msg);
-      alert(`Photo upload error: ${msg}`);
+      setError(err instanceof Error ? err.message : 'Photo upload failed');
     } finally {
       setPhotoUploading(false);
     }
@@ -254,12 +257,12 @@ export default function FCCMemberEditPage() {
     ctx.drawImage(video, 0, 0);
     closeCamera();
     canvas.toBlob(async (blob) => {
-      if (!blob) { alert('Camera: no blob captured'); return; }
+      if (!blob) return;
       setPhotoUploading(true);
       setError(null);
       try {
-        const resized = await resizeImage(new File([blob], 'camera.jpg', { type: 'image/jpeg' }), 400, 0.85);
-        const photoFile = new File([resized], 'photo.jpg', { type: 'image/jpeg' });
+        // Camera already constrained to 640x640 — upload directly, skip resize
+        const photoFile = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
         const formData = new FormData();
         formData.append('photo', photoFile);
         const res = await fetch(`/api/fcc/members/${memberId}/photo`, {
@@ -267,16 +270,14 @@ export default function FCCMemberEditPage() {
           body: formData,
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(`${res.status}: ${data.error || 'Upload failed'}`);
+        if (!res.ok) throw new Error(data.error || 'Upload failed');
         setPhotoUrl(data.photo_url);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Photo upload failed';
-        setError(msg);
-        alert(`Photo upload error: ${msg}`);
+        setError(err instanceof Error ? err.message : 'Photo upload failed');
       } finally {
         setPhotoUploading(false);
       }
-    }, 'image/jpeg', 0.9);
+    }, 'image/jpeg', 0.85);
   }, [closeCamera, memberId]);
 
   async function handlePhotoRemove() {
