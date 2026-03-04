@@ -196,8 +196,9 @@ export default function FCCMemberEditPage() {
     setError(null);
     try {
       const resized = await resizeImage(file, 400, 0.85);
+      const photoFile = new File([resized], 'photo.jpg', { type: 'image/jpeg' });
       const formData = new FormData();
-      formData.append('photo', resized, 'photo.jpg');
+      formData.append('photo', photoFile);
       const res = await fetch(`/api/fcc/members/${memberId}/photo`, {
         method: 'POST',
         body: formData,
@@ -256,8 +257,9 @@ export default function FCCMemberEditPage() {
       setError(null);
       try {
         const resized = await resizeImage(new File([blob], 'camera.jpg', { type: 'image/jpeg' }), 400, 0.85);
+        const photoFile = new File([resized], 'photo.jpg', { type: 'image/jpeg' });
         const formData = new FormData();
-        formData.append('photo', resized, 'photo.jpg');
+        formData.append('photo', photoFile);
         const res = await fetch(`/api/fcc/members/${memberId}/photo`, {
           method: 'POST',
           body: formData,

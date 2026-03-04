@@ -54,11 +54,13 @@ export async function POST(
     return NextResponse.json({ error: 'Photo must be under 2MB' }, { status: 400 });
   }
 
-  if (!ALLOWED_TYPES.includes(photo.type)) {
+  // Accept common image types — client resizes to JPEG before upload
+  const photoType = photo.type || 'image/jpeg';
+  if (!ALLOWED_TYPES.includes(photoType) && photoType !== 'application/octet-stream') {
     return NextResponse.json({ error: 'Photo must be JPEG or PNG' }, { status: 400 });
   }
 
-  const ext = photo.type === 'image/png' ? 'png' : 'jpg';
+  const ext = photoType === 'image/png' ? 'png' : 'jpg';
   const path = `${member.household_id}/${params.memberId}.${ext}`;
   const buffer = Buffer.from(await photo.arrayBuffer());
 
@@ -66,7 +68,7 @@ export async function POST(
     .from('fcc-photos')
     .upload(path, buffer, {
       upsert: true,
-      contentType: photo.type,
+      contentType: ext === 'png' ? 'image/png' : 'image/jpeg',
     });
 
   if (uploadErr) {
