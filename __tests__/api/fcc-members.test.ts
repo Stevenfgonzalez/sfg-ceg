@@ -3,13 +3,18 @@ import { NextRequest } from 'next/server';
 
 // ── Mocks ──
 
-const mockFrom = vi.fn();
+const mockServiceFrom = vi.fn();
 const mockGetUser = vi.fn();
 
 vi.mock('@/lib/supabase-auth-server', () => ({
   createAuthMiddlewareClient: () => ({
     auth: { getUser: mockGetUser },
-    from: mockFrom,
+  }),
+}));
+
+vi.mock('@/lib/supabase', () => ({
+  createServiceClient: () => ({
+    from: mockServiceFrom,
   }),
 }));
 
@@ -80,7 +85,7 @@ describe('GET /api/fcc/members', () => {
 
   it('returns empty array when no household', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain(null));
+    mockServiceFrom.mockReturnValue(mockChain(null));
 
     const res = await listMembers(makeRequest('GET', '/api/fcc/members'));
     expect(res.status).toBe(200);
@@ -91,7 +96,7 @@ describe('GET /api/fcc/members', () => {
   it('returns members for valid household', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
       return {
@@ -120,7 +125,7 @@ describe('POST /api/fcc/members', () => {
 
   it('returns 403 when no household (auth fails)', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain(null));
+    mockServiceFrom.mockReturnValue(mockChain(null));
 
     const res = await addMember(makeRequest('POST', '/api/fcc/members', { full_name: 'Test', date_of_birth: '2000-01-01' }));
     expect(res.status).toBe(403);
@@ -130,7 +135,7 @@ describe('POST /api/fcc/members', () => {
 
   it('returns 400 when max 6 members reached', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain({ id: 'h-1', member_count: 6 }));
+    mockServiceFrom.mockReturnValue(mockChain({ id: 'h-1', member_count: 6 }));
 
     const res = await addMember(makeRequest('POST', '/api/fcc/members', { full_name: 'Test', date_of_birth: '2000-01-01' }));
     expect(res.status).toBe(400);
@@ -141,7 +146,7 @@ describe('POST /api/fcc/members', () => {
   it('creates member and returns 201', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       // Call 1: getFccAuth owner check
       if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
@@ -165,7 +170,7 @@ describe('POST /api/fcc/members', () => {
 
   it('returns 400 on invalid JSON body', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain(MOCK_HOUSEHOLD));
+    mockServiceFrom.mockReturnValue(mockChain(MOCK_HOUSEHOLD));
 
     const req = new NextRequest('http://localhost/api/fcc/members', {
       method: 'POST',
@@ -189,7 +194,7 @@ describe('GET /api/fcc/members/[memberId]', () => {
   it('returns 404 when member not found', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       // First call: getFccAuth owner check (succeed)
       if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
@@ -203,7 +208,7 @@ describe('GET /api/fcc/members/[memberId]', () => {
 
   it('returns member with clinical data', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain({ ...MOCK_MEMBER, fcc_member_clinical: MOCK_CLINICAL }));
+    mockServiceFrom.mockReturnValue(mockChain({ ...MOCK_MEMBER, fcc_member_clinical: MOCK_CLINICAL }));
 
     const res = await getMember(makeRequest('GET', '/api/fcc/members/m-1'), makeParams('m-1'));
     expect(res.status).toBe(200);
@@ -224,7 +229,7 @@ describe('PUT /api/fcc/members/[memberId]', () => {
   it('updates only whitelisted fields', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const chain = mockChain({ ...MOCK_MEMBER, full_name: 'Updated Name' });
-    mockFrom.mockReturnValue(chain);
+    mockServiceFrom.mockReturnValue(chain);
 
     const res = await updateMember(
       makeRequest('PUT', '/api/fcc/members/m-1', {
@@ -250,7 +255,7 @@ describe('PUT /api/fcc/members/[memberId]', () => {
   it('returns 500 on update error', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       // First call: getFccAuth owner check (succeed)
       if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
@@ -278,7 +283,7 @@ describe('DELETE /api/fcc/members/[memberId]', () => {
   it('deletes member and returns success', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       // First call: getFccAuth owner check (succeed)
       if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
@@ -301,7 +306,7 @@ describe('DELETE /api/fcc/members/[memberId]', () => {
   it('returns 500 on delete error', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       // First call: getFccAuth owner check (succeed)
       if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
@@ -335,7 +340,7 @@ describe('PUT /api/fcc/members/[memberId]/clinical', () => {
   it('updates clinical data with whitelisted fields only', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const chain = mockChain(MOCK_CLINICAL);
-    mockFrom.mockReturnValue(chain);
+    mockServiceFrom.mockReturnValue(chain);
 
     const res = await updateClinical(
       makeRequest('PUT', '/api/fcc/members/m-1/clinical', {
@@ -357,7 +362,7 @@ describe('PUT /api/fcc/members/[memberId]/clinical', () => {
   it('returns 500 on clinical update error', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       // First call: getFccAuth owner check (succeed)
       if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);

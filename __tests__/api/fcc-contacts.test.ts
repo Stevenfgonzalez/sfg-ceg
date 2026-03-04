@@ -3,13 +3,18 @@ import { NextRequest } from 'next/server';
 
 // ── Mocks ──
 
-const mockFrom = vi.fn();
+const mockServiceFrom = vi.fn();
 const mockGetUser = vi.fn();
 
 vi.mock('@/lib/supabase-auth-server', () => ({
   createAuthMiddlewareClient: () => ({
     auth: { getUser: mockGetUser },
-    from: mockFrom,
+  }),
+}));
+
+vi.mock('@/lib/supabase', () => ({
+  createServiceClient: () => ({
+    from: mockServiceFrom,
   }),
 }));
 
@@ -60,7 +65,7 @@ describe('GET /api/fcc/contacts', () => {
 
   it('returns empty array when no household', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain(null));
+    mockServiceFrom.mockReturnValue(mockChain(null));
 
     const res = await listContacts(makeRequest('GET', '/api/fcc/contacts'));
     expect(res.status).toBe(200);
@@ -71,7 +76,7 @@ describe('GET /api/fcc/contacts', () => {
   it('returns contacts for valid household', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
       return {
@@ -100,7 +105,7 @@ describe('POST /api/fcc/contacts', () => {
 
   it('returns 403 when no household (auth fails)', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain(null));
+    mockServiceFrom.mockReturnValue(mockChain(null));
 
     const res = await addContact(makeRequest('POST', '/api/fcc/contacts', { name: 'Test', relation: 'Friend', phone: '555-0000' }));
     expect(res.status).toBe(403);
@@ -111,7 +116,7 @@ describe('POST /api/fcc/contacts', () => {
   it('creates contact and returns 201', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
       return mockChain(MOCK_CONTACT);
@@ -129,7 +134,7 @@ describe('POST /api/fcc/contacts', () => {
 
   it('returns 400 on invalid JSON body', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain(MOCK_HOUSEHOLD));
+    mockServiceFrom.mockReturnValue(mockChain(MOCK_HOUSEHOLD));
 
     const req = new NextRequest('http://localhost/api/fcc/contacts', {
       method: 'POST',
@@ -153,7 +158,7 @@ describe('PUT /api/fcc/contacts/[contactId]', () => {
   it('updates contact with whitelisted fields only', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const chain = mockChain({ ...MOCK_CONTACT, name: 'Updated Name' });
-    mockFrom.mockReturnValue(chain);
+    mockServiceFrom.mockReturnValue(chain);
 
     const res = await updateContact(
       makeRequest('PUT', '/api/fcc/contacts/c-1', {
@@ -174,7 +179,7 @@ describe('PUT /api/fcc/contacts/[contactId]', () => {
   it('returns 500 on update error', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       // First call: getFccAuth owner check (succeed)
       if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
@@ -202,7 +207,7 @@ describe('DELETE /api/fcc/contacts/[contactId]', () => {
   it('deletes contact and returns success', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       // First call: getFccAuth owner check (succeed)
       if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
@@ -223,7 +228,7 @@ describe('DELETE /api/fcc/contacts/[contactId]', () => {
   it('returns 500 on delete error', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       // First call: getFccAuth owner check (succeed)
       if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);

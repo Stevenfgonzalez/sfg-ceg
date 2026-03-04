@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
+import { createServiceClient } from '@/lib/supabase';
 import { log } from '@/lib/logger';
 
 // PUT /api/fcc/caregivers/[caregiverId] — update role (owner only)
@@ -27,7 +28,8 @@ export async function PUT(
     return NextResponse.json({ error: 'Role must be viewer or editor' }, { status: 400 });
   }
 
-  const { data, error } = await supabase
+  const svc = createServiceClient();
+  const { data, error } = await svc
     .from('fcc_caregivers')
     .update({ role })
     .eq('id', params.caregiverId)
@@ -54,7 +56,8 @@ export async function DELETE(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { error } = await supabase
+  const svc = createServiceClient();
+  const { error } = await svc
     .from('fcc_caregivers')
     .delete()
     .eq('id', params.caregiverId);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
+import { createServiceClient } from '@/lib/supabase';
 import { log } from '@/lib/logger';
 import { validateFccMemberBody } from '@/lib/api-validation';
 import { getFccAuth } from '@/lib/fcc-auth';
@@ -17,12 +18,13 @@ export async function GET(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const auth = await getFccAuth(supabase, user.id);
+  const svc = createServiceClient();
+  const auth = await getFccAuth(svc, user.id);
   if (!auth) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { data: member, error } = await supabase
+  const { data: member, error } = await svc
     .from('fcc_members')
     .select('*, fcc_member_clinical(*)')
     .eq('id', params.memberId)
@@ -49,7 +51,8 @@ export async function PUT(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  const svc = createServiceClient();
+  const auth = await getFccAuth(svc, user.id, ['owner', 'editor']);
   if (!auth) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -66,7 +69,7 @@ export async function PUT(
     return NextResponse.json({ error: result.error.error }, { status: result.error.status });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await svc
     .from('fcc_members')
     .update(result.data)
     .eq('id', params.memberId)
@@ -95,12 +98,13 @@ export async function DELETE(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  const svc = createServiceClient();
+  const auth = await getFccAuth(svc, user.id, ['owner', 'editor']);
   if (!auth) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { error } = await supabase
+  const { error } = await svc
     .from('fcc_members')
     .delete()
     .eq('id', params.memberId)

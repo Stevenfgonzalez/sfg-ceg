@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
+import { createServiceClient } from '@/lib/supabase';
 import { log } from '@/lib/logger';
 import { validateFccMemberBody } from '@/lib/api-validation';
 import { getFccAuth } from '@/lib/fcc-auth';
@@ -14,12 +15,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const auth = await getFccAuth(supabase, user.id);
+  const svc = createServiceClient();
+  const auth = await getFccAuth(svc, user.id);
   if (!auth) {
     return NextResponse.json({ members: [] });
   }
 
-  const { data: members, error } = await supabase
+  const { data: members, error } = await svc
     .from('fcc_members')
     .select('*, fcc_member_clinical(*)')
     .eq('household_id', auth.household_id)
@@ -42,12 +44,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  const svc = createServiceClient();
+  const auth = await getFccAuth(svc, user.id, ['owner', 'editor']);
   if (!auth) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { data: household } = await supabase
+  const { data: household } = await svc
     .from('fcc_households')
     .select('id, member_count')
     .eq('id', auth.household_id)
@@ -73,7 +76,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: result.error.error }, { status: result.error.status });
   }
 
-  const { data: member, error: memberErr } = await supabase
+  const { data: member, error: memberErr } = await svc
     .from('fcc_members')
     .insert({
       household_id: household.id,
@@ -88,7 +91,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create member' }, { status: 500 });
   }
 
-  await supabase.from('fcc_member_clinical').insert({ member_id: member.id });
+  await svc.from('fcc_member_clinical').insert({ member_id: member.id });
 
   log({ level: 'info', event: 'fcc_member_created', route: '/api/fcc/members' });
   return NextResponse.json({ member }, { status: 201 });

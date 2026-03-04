@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
+import { createServiceClient } from '@/lib/supabase';
 import { log } from '@/lib/logger';
 import { getFccAuth } from '@/lib/fcc-auth';
 
@@ -19,13 +20,14 @@ export async function POST(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  const svc = createServiceClient();
+  const auth = await getFccAuth(svc, user.id, ['owner', 'editor']);
   if (!auth) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   // Verify member belongs to user's household
-  const { data: member } = await supabase
+  const { data: member } = await svc
     .from('fcc_members')
     .select('id, household_id')
     .eq('id', params.memberId)
@@ -60,7 +62,7 @@ export async function POST(
   const path = `${member.household_id}/${params.memberId}.${ext}`;
   const buffer = Buffer.from(await photo.arrayBuffer());
 
-  const { error: uploadErr } = await supabase.storage
+  const { error: uploadErr } = await svc.storage
     .from('fcc-photos')
     .upload(path, buffer, {
       upsert: true,
@@ -72,10 +74,10 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to upload photo' }, { status: 500 });
   }
 
-  const { data: urlData } = supabase.storage.from('fcc-photos').getPublicUrl(path);
+  const { data: urlData } = svc.storage.from('fcc-photos').getPublicUrl(path);
   const photo_url = urlData.publicUrl;
 
-  const { error: updateErr } = await supabase
+  const { error: updateErr } = await svc
     .from('fcc_members')
     .update({ photo_url })
     .eq('id', params.memberId);
@@ -102,12 +104,13 @@ export async function DELETE(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  const svc = createServiceClient();
+  const auth = await getFccAuth(svc, user.id, ['owner', 'editor']);
   if (!auth) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { data: member } = await supabase
+  const { data: member } = await svc
     .from('fcc_members')
     .select('id, household_id, photo_url')
     .eq('id', params.memberId)
@@ -119,9 +122,9 @@ export async function DELETE(
   }
 
   const basePath = `${member.household_id}/${params.memberId}`;
-  await supabase.storage.from('fcc-photos').remove([`${basePath}.jpg`, `${basePath}.png`]);
+  await svc.storage.from('fcc-photos').remove([`${basePath}.jpg`, `${basePath}.png`]);
 
-  const { error: updateErr } = await supabase
+  const { error: updateErr } = await svc
     .from('fcc_members')
     .update({ photo_url: null })
     .eq('id', params.memberId);

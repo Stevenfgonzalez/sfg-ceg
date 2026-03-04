@@ -15,12 +15,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const auth = await getFccAuth(supabase, user.id);
+  const svc = createServiceClient();
+  const auth = await getFccAuth(svc, user.id);
   if (!auth) {
     return NextResponse.json({ household: null });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await svc
     .from('fcc_households')
     .select('*, fcc_members(*, fcc_member_clinical(*)), fcc_emergency_contacts(*)')
     .eq('id', auth.household_id)
@@ -56,9 +57,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: result.error.error }, { status: result.error.status });
   }
 
-  // Use service client for insert to bypass RLS (auth already verified above)
-  const serviceClient = createServiceClient();
-  const { data, error } = await serviceClient
+  const svc = createServiceClient();
+  const { data, error } = await svc
     .from('fcc_households')
     .insert({
       owner_id: user.id,
@@ -86,7 +86,8 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  const svc = createServiceClient();
+  const auth = await getFccAuth(svc, user.id, ['owner', 'editor']);
   if (!auth) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -103,7 +104,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: result.error.error }, { status: result.error.status });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await svc
     .from('fcc_households')
     .update(result.data)
     .eq('id', auth.household_id)

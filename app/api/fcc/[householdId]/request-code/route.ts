@@ -29,12 +29,13 @@ export async function POST(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  const svc = createServiceClient();
+  const auth = await getFccAuth(svc, user.id, ['owner', 'editor']);
   if (!auth || auth.household_id !== params.householdId) {
     return NextResponse.json({ error: 'Household not found' }, { status: 404 });
   }
 
-  const { data: household } = await supabase
+  const { data: household } = await svc
     .from('fcc_households')
     .select('id, name')
     .eq('id', params.householdId)
@@ -75,8 +76,7 @@ export async function POST(
   const expiresAt = new Date(now.getTime() + TEMP_CODE_TTL_MINUTES * 60 * 1000);
 
   // Insert using service client (RLS bypass for insert)
-  const serviceClient = createServiceClient();
-  const { error: insertErr } = await serviceClient
+  const { error: insertErr } = await svc
     .from('fcc_temp_codes')
     .insert({
       household_id: params.householdId,

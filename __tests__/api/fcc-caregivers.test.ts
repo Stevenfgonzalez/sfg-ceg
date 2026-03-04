@@ -3,13 +3,18 @@ import { NextRequest } from 'next/server';
 
 // ── Mocks ──
 
-const mockFrom = vi.fn();
+const mockServiceFrom = vi.fn();
 const mockGetUser = vi.fn();
 
 vi.mock('@/lib/supabase-auth-server', () => ({
   createAuthMiddlewareClient: () => ({
     auth: { getUser: mockGetUser },
-    from: mockFrom,
+  }),
+}));
+
+vi.mock('@/lib/supabase', () => ({
+  createServiceClient: () => ({
+    from: mockServiceFrom,
   }),
 }));
 
@@ -54,7 +59,7 @@ describe('GET /api/fcc/caregivers', () => {
 
   it('returns empty list when no household', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain(null, { message: 'no rows', code: 'PGRST116' }));
+    mockServiceFrom.mockReturnValue(mockChain(null, { message: 'no rows', code: 'PGRST116' }));
     const res = await GET(makeRequest('GET'));
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -72,7 +77,7 @@ describe('POST /api/fcc/caregivers', () => {
   it('returns 400 with invalid email', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     // household lookup
-    mockFrom.mockReturnValue(mockChain({ id: 'h-1' }));
+    mockServiceFrom.mockReturnValue(mockChain({ id: 'h-1' }));
     const res = await POST(makeRequest('POST', { email: 'not-an-email', role: 'viewer' }));
     expect(res.status).toBe(400);
     const json = await res.json();
@@ -81,7 +86,7 @@ describe('POST /api/fcc/caregivers', () => {
 
   it('returns 400 with invalid role', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain({ id: 'h-1' }));
+    mockServiceFrom.mockReturnValue(mockChain({ id: 'h-1' }));
     const res = await POST(makeRequest('POST', { email: 'test@test.com', role: 'admin' }));
     expect(res.status).toBe(400);
     const json = await res.json();
@@ -96,7 +101,7 @@ describe('POST /api/fcc/caregivers', () => {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockResolvedValue({ count: 0 }),
     };
-    mockFrom.mockReturnValueOnce(householdChain).mockReturnValueOnce(countChain);
+    mockServiceFrom.mockReturnValueOnce(householdChain).mockReturnValueOnce(countChain);
     const res = await POST(makeRequest('POST', { email: 'owner@sfg.ac', role: 'viewer' }));
     expect(res.status).toBe(400);
     const json = await res.json();
@@ -111,7 +116,7 @@ describe('POST /api/fcc/caregivers', () => {
       eq: vi.fn().mockResolvedValue({ count: 1 }),
     };
     const insertChain = mockChain({ id: 'cg-1', email: 'caregiver@test.com', role: 'viewer', created_at: new Date().toISOString() });
-    mockFrom.mockReturnValueOnce(householdChain).mockReturnValueOnce(countChain).mockReturnValueOnce(insertChain);
+    mockServiceFrom.mockReturnValueOnce(householdChain).mockReturnValueOnce(countChain).mockReturnValueOnce(insertChain);
 
     const res = await POST(makeRequest('POST', { email: 'caregiver@test.com', role: 'viewer' }));
     expect(res.status).toBe(201);
@@ -126,7 +131,7 @@ describe('POST /api/fcc/caregivers', () => {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockResolvedValue({ count: 5 }),
     };
-    mockFrom.mockReturnValueOnce(householdChain).mockReturnValueOnce(countChain);
+    mockServiceFrom.mockReturnValueOnce(householdChain).mockReturnValueOnce(countChain);
     const res = await POST(makeRequest('POST', { email: 'new@test.com', role: 'editor' }));
     expect(res.status).toBe(400);
     const json = await res.json();
@@ -141,7 +146,7 @@ describe('POST /api/fcc/caregivers', () => {
       eq: vi.fn().mockResolvedValue({ count: 1 }),
     };
     const insertChain = mockChain(null, { message: 'duplicate key value violates unique constraint', code: '23505' });
-    mockFrom.mockReturnValueOnce(householdChain).mockReturnValueOnce(countChain).mockReturnValueOnce(insertChain);
+    mockServiceFrom.mockReturnValueOnce(householdChain).mockReturnValueOnce(countChain).mockReturnValueOnce(insertChain);
 
     const res = await POST(makeRequest('POST', { email: 'dup@test.com', role: 'viewer' }));
     expect(res.status).toBe(409);

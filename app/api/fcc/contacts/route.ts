@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
+import { createServiceClient } from '@/lib/supabase';
 import { validateFccContactBody } from '@/lib/api-validation';
 import { getFccAuth } from '@/lib/fcc-auth';
 
@@ -13,12 +14,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const auth = await getFccAuth(supabase, user.id);
+  const svc = createServiceClient();
+  const auth = await getFccAuth(svc, user.id);
   if (!auth) {
     return NextResponse.json({ contacts: [] });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await svc
     .from('fcc_emergency_contacts')
     .select('*')
     .eq('household_id', auth.household_id)
@@ -41,7 +43,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  const svc = createServiceClient();
+  const auth = await getFccAuth(svc, user.id, ['owner', 'editor']);
   if (!auth) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -58,7 +61,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: result.error.error }, { status: result.error.status });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await svc
     .from('fcc_emergency_contacts')
     .insert({
       household_id: auth.household_id,

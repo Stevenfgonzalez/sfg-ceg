@@ -3,13 +3,18 @@ import { NextRequest } from 'next/server';
 
 // ── Mocks ──
 
-const mockFrom = vi.fn();
+const mockServiceFrom = vi.fn();
 const mockGetUser = vi.fn();
 
 vi.mock('@/lib/supabase-auth-server', () => ({
   createAuthMiddlewareClient: () => ({
     auth: { getUser: mockGetUser },
-    from: mockFrom,
+  }),
+}));
+
+vi.mock('@/lib/supabase', () => ({
+  createServiceClient: () => ({
+    from: mockServiceFrom,
   }),
 }));
 
@@ -58,7 +63,7 @@ describe('GET /api/fcc/access-logs', () => {
 
   it('returns empty array when no household', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain(null));
+    mockServiceFrom.mockReturnValue(mockChain(null));
 
     const res = await GET(makeRequest());
     expect(res.status).toBe(200);
@@ -69,7 +74,7 @@ describe('GET /api/fcc/access-logs', () => {
   it('returns access logs ordered by date', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
       return {
@@ -91,7 +96,7 @@ describe('GET /api/fcc/access-logs', () => {
   it('returns 500 on database error', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
       return {

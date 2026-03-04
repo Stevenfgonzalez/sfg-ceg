@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
+import { createServiceClient } from '@/lib/supabase';
 import { log } from '@/lib/logger';
 
 // POST /api/fcc/caregivers/accept — accept pending invite
@@ -13,7 +14,8 @@ export async function POST(request: NextRequest) {
   }
 
   // Find pending invite matching user's email
-  const { data: invite, error: findErr } = await supabase
+  const svc = createServiceClient();
+  const { data: invite, error: findErr } = await svc
     .from('fcc_caregivers')
     .select('id, household_id, email, role')
     .eq('email', user.email.toLowerCase())
@@ -25,7 +27,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Accept the invite
-  const { error: updateErr } = await supabase
+  const { error: updateErr } = await svc
     .from('fcc_caregivers')
     .update({
       user_id: user.id,

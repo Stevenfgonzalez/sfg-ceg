@@ -3,16 +3,14 @@ import { NextRequest } from 'next/server';
 
 // ── Mocks ──
 
-const mockFrom = vi.fn();
-const mockGetUser = vi.fn();
 const mockServiceFrom = vi.fn();
+const mockGetUser = vi.fn();
 const mockCheckRateLimit = vi.fn();
 const mockSendFccTempCodeSms = vi.fn();
 
 vi.mock('@/lib/supabase-auth-server', () => ({
   createAuthMiddlewareClient: () => ({
     auth: { getUser: mockGetUser },
-    from: mockFrom,
   }),
 }));
 
@@ -64,7 +62,7 @@ describe('POST /api/fcc/[householdId]/request-code', () => {
 
   it('returns 404 when household not owned by user', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue({
+    mockServiceFrom.mockReturnValue({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       not: vi.fn().mockReturnThis(),
@@ -77,7 +75,7 @@ describe('POST /api/fcc/[householdId]/request-code', () => {
 
   it('returns 429 when rate limited', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue({
+    mockServiceFrom.mockReturnValue({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({ data: MOCK_HOUSEHOLD }),
@@ -90,7 +88,7 @@ describe('POST /api/fcc/[householdId]/request-code', () => {
 
   it('returns 400 for invalid phone number', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue({
+    mockServiceFrom.mockReturnValue({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({ data: MOCK_HOUSEHOLD }),
@@ -104,13 +102,19 @@ describe('POST /api/fcc/[householdId]/request-code', () => {
 
   it('generates code, inserts, sends SMS, and returns masked phone', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue({
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      single: vi.fn().mockResolvedValue({ data: MOCK_HOUSEHOLD }),
-    });
-    mockServiceFrom.mockReturnValue({
-      insert: vi.fn().mockResolvedValue({ error: null }),
+    const callIndex = { value: 0 };
+    mockServiceFrom.mockImplementation(() => {
+      callIndex.value++;
+      // Calls 1-2: getFccAuth (owner check + caregiver check) and household lookup
+      if (callIndex.value <= 2) return {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: MOCK_HOUSEHOLD }),
+      };
+      // Call 3: temp code insert
+      return {
+        insert: vi.fn().mockResolvedValue({ error: null }),
+      };
     });
 
     const res = await requestCode(makeRequest({ phone: '(602) 555-0142' }), makeParams('h-1'));
@@ -127,13 +131,19 @@ describe('POST /api/fcc/[householdId]/request-code', () => {
 
   it('returns 500 when insert fails', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue({
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      single: vi.fn().mockResolvedValue({ data: MOCK_HOUSEHOLD }),
-    });
-    mockServiceFrom.mockReturnValue({
-      insert: vi.fn().mockResolvedValue({ error: { message: 'db error' } }),
+    const callIndex = { value: 0 };
+    mockServiceFrom.mockImplementation(() => {
+      callIndex.value++;
+      // Calls 1-2: getFccAuth and household lookup
+      if (callIndex.value <= 2) return {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: MOCK_HOUSEHOLD }),
+      };
+      // Call 3: temp code insert (fail)
+      return {
+        insert: vi.fn().mockResolvedValue({ error: { message: 'db error' } }),
+      };
     });
 
     const res = await requestCode(makeRequest({ phone: '6025550142' }), makeParams('h-1'));

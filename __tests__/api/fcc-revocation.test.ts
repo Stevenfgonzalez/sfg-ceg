@@ -3,13 +3,18 @@ import { NextRequest } from 'next/server';
 
 // ── Mocks ──
 
-const mockFrom = vi.fn();
+const mockServiceFrom = vi.fn();
 const mockGetUser = vi.fn();
 
 vi.mock('@/lib/supabase-auth-server', () => ({
   createAuthMiddlewareClient: () => ({
     auth: { getUser: mockGetUser },
-    from: mockFrom,
+  }),
+}));
+
+vi.mock('@/lib/supabase', () => ({
+  createServiceClient: () => ({
+    from: mockServiceFrom,
   }),
 }));
 
@@ -44,7 +49,7 @@ describe('POST /api/fcc/access-logs/[logId]/revoke', () => {
 
   it('returns 403 when no household (auth fails)', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue({
+    mockServiceFrom.mockReturnValue({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       not: vi.fn().mockReturnThis(),
@@ -60,7 +65,7 @@ describe('POST /api/fcc/access-logs/[logId]/revoke', () => {
   it('returns 404 when log not found', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       if (callIndex.value === 1) return {
         select: vi.fn().mockReturnThis(),
@@ -81,7 +86,7 @@ describe('POST /api/fcc/access-logs/[logId]/revoke', () => {
   it('returns 403 when log belongs to different household', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       if (callIndex.value === 1) return {
         select: vi.fn().mockReturnThis(),
@@ -105,7 +110,7 @@ describe('POST /api/fcc/access-logs/[logId]/revoke', () => {
   it('returns 400 when already revoked', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       if (callIndex.value === 1) return {
         select: vi.fn().mockReturnThis(),
@@ -131,7 +136,7 @@ describe('POST /api/fcc/access-logs/[logId]/revoke', () => {
   it('successfully revokes an active session', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       if (callIndex.value === 1) return {
         select: vi.fn().mockReturnThis(),

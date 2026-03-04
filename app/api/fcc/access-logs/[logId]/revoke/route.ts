@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
+import { createServiceClient } from '@/lib/supabase';
 import { log } from '@/lib/logger';
 import { getFccAuth } from '@/lib/fcc-auth';
 
@@ -16,13 +17,14 @@ export async function POST(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  const svc = createServiceClient();
+  const auth = await getFccAuth(svc, user.id, ['owner', 'editor']);
   if (!auth) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   // Fetch the access log entry
-  const { data: logEntry, error: fetchErr } = await supabase
+  const { data: logEntry, error: fetchErr } = await svc
     .from('fcc_access_logs')
     .select('id, household_id, revoked_at, expires_at')
     .eq('id', params.logId)
@@ -42,7 +44,7 @@ export async function POST(
   }
 
   const now = new Date().toISOString();
-  const { error: updateErr } = await supabase
+  const { error: updateErr } = await svc
     .from('fcc_access_logs')
     .update({ revoked_at: now, revoked_by: user.id })
     .eq('id', params.logId);

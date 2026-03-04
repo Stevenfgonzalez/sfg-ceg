@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
+import { createServiceClient } from '@/lib/supabase';
 import { log } from '@/lib/logger';
 import { validateFccCaregiverInvite } from '@/lib/api-validation';
 
@@ -15,7 +16,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { data: household } = await supabase
+  const svc = createServiceClient();
+  const { data: household } = await svc
     .from('fcc_households')
     .select('id')
     .eq('owner_id', user.id)
@@ -25,7 +27,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ caregivers: [] });
   }
 
-  const { data: caregivers, error } = await supabase
+  const { data: caregivers, error } = await svc
     .from('fcc_caregivers')
     .select('id, email, role, accepted_at, created_at')
     .eq('household_id', household.id)
@@ -48,7 +50,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { data: household } = await supabase
+  const svc = createServiceClient();
+  const { data: household } = await svc
     .from('fcc_households')
     .select('id')
     .eq('owner_id', user.id)
@@ -71,7 +74,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Check max limit
-  const { count } = await supabase
+  const { count } = await svc
     .from('fcc_caregivers')
     .select('id', { count: 'exact', head: true })
     .eq('household_id', household.id);
@@ -85,7 +88,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Cannot invite yourself' }, { status: 400 });
   }
 
-  const { data: caregiver, error: insertErr } = await supabase
+  const { data: caregiver, error: insertErr } = await svc
     .from('fcc_caregivers')
     .insert({
       household_id: household.id,

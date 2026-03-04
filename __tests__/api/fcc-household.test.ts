@@ -3,14 +3,12 @@ import { NextRequest } from 'next/server';
 
 // ── Mocks ──
 
-const mockFrom = vi.fn();
 const mockServiceFrom = vi.fn();
 const mockGetUser = vi.fn();
 
 vi.mock('@/lib/supabase-auth-server', () => ({
   createAuthMiddlewareClient: () => ({
     auth: { getUser: mockGetUser },
-    from: mockFrom,
   }),
 }));
 
@@ -80,7 +78,7 @@ describe('GET /api/fcc/household', () => {
 
   it('returns household data for authenticated owner', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain(MOCK_HOUSEHOLD));
+    mockServiceFrom.mockReturnValue(mockChain(MOCK_HOUSEHOLD));
 
     const res = await GET(makeRequest('GET'));
     expect(res.status).toBe(200);
@@ -91,7 +89,7 @@ describe('GET /api/fcc/household', () => {
 
   it('returns null household when none exists (PGRST116)', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain(null, { message: 'No rows', code: 'PGRST116' }));
+    mockServiceFrom.mockReturnValue(mockChain(null, { message: 'No rows', code: 'PGRST116' }));
 
     const res = await GET(makeRequest('GET'));
     expect(res.status).toBe(200);
@@ -102,7 +100,7 @@ describe('GET /api/fcc/household', () => {
   it('returns 500 on non-PGRST116 database error', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       // First call: getFccAuth owner check (succeed)
       if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
@@ -183,7 +181,7 @@ describe('PUT /api/fcc/household', () => {
 
   it('updates household and returns data', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain({ ...MOCK_HOUSEHOLD, name: 'Updated' }));
+    mockServiceFrom.mockReturnValue(mockChain({ ...MOCK_HOUSEHOLD, name: 'Updated' }));
 
     const res = await PUT(makeRequest('PUT', {
       name: 'Updated',
@@ -200,7 +198,7 @@ describe('PUT /api/fcc/household', () => {
   it('returns 500 on update error', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     const callIndex = { value: 0 };
-    mockFrom.mockImplementation(() => {
+    mockServiceFrom.mockImplementation(() => {
       callIndex.value++;
       // First call: getFccAuth owner check (succeed)
       if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
