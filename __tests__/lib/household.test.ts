@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   generateGoBagChecklist,
+  generateHouseholdCode,
   type HouseholdData,
   type HouseholdMember,
   type Pet,
@@ -9,7 +10,7 @@ import {
 const emptyAfn = { medical: false, mobility: false, sensory: false, cognitive: false, medication: false };
 
 function makeData(overrides: Partial<HouseholdData> = {}): HouseholdData {
-  return { members: [], pets: [], locations: [], checklist: [], ...overrides };
+  return { members: [], pets: [], locations: [], checklist: [], vault: [], householdCode: '', ...overrides };
 }
 
 function makeMember(overrides: Partial<HouseholdMember> = {}): HouseholdMember {
@@ -115,5 +116,22 @@ describe('generateGoBagChecklist', () => {
     const second = generateGoBagChecklist(data);
     expect(second[0].packed).toBe(true);
     expect(second[1].packed).toBe(false);
+  });
+});
+
+describe('generateHouseholdCode', () => {
+  it('returns a 7-char string in XXX-XXX format', () => {
+    const code = generateHouseholdCode();
+    expect(code).toMatch(/^[A-Z2-9]{3}-[A-Z2-9]{3}$/);
+  });
+
+  it('generates unique codes', () => {
+    const codes = new Set(Array.from({ length: 50 }, () => generateHouseholdCode()));
+    expect(codes.size).toBe(50);
+  });
+
+  it('excludes ambiguous characters (0, 1, I, L, O)', () => {
+    const codes = Array.from({ length: 100 }, () => generateHouseholdCode()).join('');
+    expect(codes).not.toMatch(/[01ILO]/);
   });
 });

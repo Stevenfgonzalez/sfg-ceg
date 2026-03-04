@@ -211,7 +211,7 @@ export default function CEGDashboard() {
         </div>
 
         {/* Household Pre-Plan */}
-        <div className="px-4 mb-6">
+        <div className="px-4 mb-3">
           <a
             href="/household"
             className="flex items-center gap-4 bg-slate-800 rounded-xl px-5 py-4 border border-slate-700 active:bg-slate-700 transition-colors"
@@ -220,6 +220,20 @@ export default function CEGDashboard() {
             <div>
               <p className="font-bold text-base">Household Pre-Plan</p>
               <p className="text-sm text-slate-400">Members, pets, go-bag checklist</p>
+            </div>
+          </a>
+        </div>
+
+        {/* Go-Bag / Supplies */}
+        <div className="px-4 mb-6">
+          <a
+            href="/supplies"
+            className="flex items-center gap-4 bg-slate-800 rounded-xl px-5 py-4 border border-slate-700 active:bg-slate-700 transition-colors"
+          >
+            <span className="text-3xl">🎒</span>
+            <div>
+              <p className="font-bold text-base">Go-Bag / Supplies</p>
+              <p className="text-sm text-slate-400">Smart checklist, emergency vault, readiness score</p>
             </div>
           </a>
         </div>

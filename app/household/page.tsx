@@ -7,6 +7,7 @@ import {
   type GrabLocation,
   type HouseholdData,
   generateGoBagChecklist,
+  generateHouseholdCode,
   loadHousehold,
   saveHousehold,
 } from '@/lib/household-checklist';
@@ -19,11 +20,18 @@ function uid(): string {
 
 export default function HouseholdPage() {
   const [tab, setTab] = useState<Tab>('members');
-  const [data, setData] = useState<HouseholdData>({ members: [], pets: [], locations: [], checklist: [] });
+  const [data, setData] = useState<HouseholdData>({ members: [], pets: [], locations: [], checklist: [], vault: [], householdCode: '' });
   const [loaded, setLoaded] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    setData(loadHousehold());
+    const loaded = loadHousehold();
+    // Auto-generate a code if none exists
+    if (!loaded.householdCode) {
+      loaded.householdCode = generateHouseholdCode();
+      saveHousehold(loaded);
+    }
+    setData(loaded);
     setLoaded(true);
   }, []);
 
@@ -47,6 +55,28 @@ export default function HouseholdPage() {
         <a href="/" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
         <h1 className="text-lg font-bold">Household Pre-Plan</h1>
       </header>
+
+      {/* Household Code */}
+      {data.householdCode && (
+        <div className="mx-4 mt-3 mb-1 bg-blue-950/60 border border-blue-800 rounded-xl p-3 flex items-center justify-between">
+          <div>
+            <div className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Household Code</div>
+            <div className="text-xl font-black tracking-[0.15em] font-mono text-white">{data.householdCode}</div>
+            <div className="text-xs text-slate-400 mt-0.5">Use this code when checking in</div>
+          </div>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(data.householdCode).then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              });
+            }}
+            className="px-3 py-2 rounded-lg bg-blue-600 active:bg-blue-700 text-xs font-bold transition-colors shrink-0"
+          >
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+      )}
 
       {/* Tab bar */}
       <div className="flex border-b border-slate-800">

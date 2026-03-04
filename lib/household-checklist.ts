@@ -37,11 +37,33 @@ export interface ChecklistItem {
   packed: boolean;
 }
 
+export interface VaultItem {
+  id: string;
+  label: string;
+  category: string;
+  priority: 'critical' | 'important' | 'helpful';
+  reason: string;
+  grab: boolean;
+  grabLoc: string;
+  has_copy: boolean;
+  notes: string;
+}
+
 export interface HouseholdData {
   members: HouseholdMember[];
   pets: Pet[];
   locations: GrabLocation[];
   checklist: ChecklistItem[];
+  vault: VaultItem[];
+  householdCode: string;
+}
+
+const CODE_ALPHA = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+export function generateHouseholdCode(): string {
+  let c = '';
+  for (let i = 0; i < 6; i++) c += CODE_ALPHA[Math.floor(Math.random() * CODE_ALPHA.length)];
+  return `${c.slice(0, 3)}-${c.slice(3)}`;
 }
 
 function item(label: string, reason: string): ChecklistItem {
@@ -121,15 +143,106 @@ export function generateGoBagChecklist(data: HouseholdData): ChecklistItem[] {
   return items.map(i => ({ ...i, packed: packedMap.get(i.id) ?? false }));
 }
 
+// ── Vault generator ──
+
+function vaultItem(label: string, category: string, priority: VaultItem['priority'], reason: string, opts: { grab?: boolean; grabLoc?: string; notes?: string } = {}): VaultItem {
+  return {
+    id: `vault-${label}-${reason}`,
+    label,
+    category,
+    priority,
+    reason,
+    grab: opts.grab ?? false,
+    grabLoc: opts.grabLoc ?? '',
+    has_copy: false,
+    notes: opts.notes ?? '',
+  };
+}
+
+export function generateVault(data: HouseholdData): VaultItem[] {
+  const items: VaultItem[] = [];
+
+  // CRITICAL — need within 48 hours
+  data.members.forEach(m => {
+    const name = m.name || 'member';
+    items.push(vaultItem(`Driver's License / ID — ${name}`, 'identity', 'critical', name, { grab: true }));
+  });
+  items.push(vaultItem('Passports (all family members)', 'identity', 'critical', 'Universal', { grab: true, grabLoc: 'Fireproof box' }));
+  items.push(vaultItem('Social Security Cards', 'identity', 'critical', 'Universal', { grab: true, grabLoc: 'Fireproof box' }));
+  items.push(vaultItem('Home Insurance Policy', 'insurance', 'critical', 'Recovery', { grab: true, notes: 'Policy #, agent name/phone, coverage limits. MOST IMPORTANT DOCUMENT FOR RECOVERY.' }));
+  items.push(vaultItem('Insurance Agent Contact Info', 'insurance', 'critical', 'Recovery', { notes: 'Name, phone, email. Save in phone contacts too.' }));
+  items.push(vaultItem('Auto Insurance Policy + Cards', 'insurance', 'critical', 'Recovery'));
+  items.push(vaultItem('Health Insurance Cards', 'insurance', 'critical', 'Medical', { grab: true }));
+
+  const medicalMembers = data.members.filter(m => m.afn.medical || m.afn.medication || m.type === 'elderly');
+  medicalMembers.forEach(m => {
+    const name = m.name || 'member';
+    items.push(vaultItem(`Current Medication List — ${name}`, 'medical', 'critical', name, { grab: true, notes: 'Drug name, dosage, frequency, doctor, pharmacy + phone' }));
+  });
+  items.push(vaultItem('Doctor / Specialist Contact List', 'medical', 'critical', 'Medical'));
+  items.push(vaultItem('Pharmacy Info (name, phone, Rx numbers)', 'medical', 'critical', 'Medical'));
+
+  const children = data.members.filter(m => m.type === 'child');
+  children.forEach(m => {
+    const name = m.name || 'child';
+    items.push(vaultItem(`Birth Certificate — ${name}`, 'identity', 'critical', name, { grab: true }));
+  });
+
+  // IMPORTANT — need within 1-2 weeks
+  items.push(vaultItem('Property Deed / Mortgage Documents', 'property', 'important', 'Recovery'));
+  items.push(vaultItem('Vehicle Title(s)', 'property', 'important', 'Recovery'));
+  items.push(vaultItem('Vehicle Registration(s)', 'property', 'important', 'Recovery'));
+  items.push(vaultItem('Recent Tax Returns (2 years)', 'financial', 'important', 'Financial'));
+  items.push(vaultItem('Bank Account Information', 'financial', 'important', 'Financial', { notes: 'Institution, account type, last 4. Enough to access funds.' }));
+  items.push(vaultItem('Credit Card Info + Customer Service #s', 'financial', 'important', 'Financial', { notes: 'For replacement cards' }));
+  items.push(vaultItem('Will / Trust Documents', 'legal', 'important', 'Legal'));
+  items.push(vaultItem('Power of Attorney', 'legal', 'important', 'Legal'));
+
+  if (children.length > 0) {
+    items.push(vaultItem('Custody Agreements / Court Orders', 'legal', 'important', 'Children', { notes: 'Schools and shelters may require proof' }));
+    items.push(vaultItem('School Enrollment Records', 'education', 'important', 'Children', { notes: 'Needed to re-enroll if school destroyed' }));
+    items.push(vaultItem('Immunization Records (children)', 'medical', 'important', 'Children', { notes: 'Required for school enrollment' }));
+  }
+
+  if (data.members.some(m => m.type === 'elderly')) {
+    items.push(vaultItem('Advance Directive / DNR', 'medical', 'important', 'Elderly', { grab: true }));
+    items.push(vaultItem('Healthcare Power of Attorney', 'medical', 'important', 'Elderly'));
+  }
+
+  data.pets.forEach(p => {
+    const name = p.name || p.type;
+    items.push(vaultItem(`Vaccination Records — ${name}`, 'pet', 'important', name, { notes: 'Required at shelters' }));
+    items.push(vaultItem(`Microchip # — ${name}`, 'pet', 'important', name, { notes: 'How they get returned if lost' }));
+  });
+
+  // HELPFUL — makes recovery easier
+  items.push(vaultItem('Home Inventory (video walkthrough)', 'inventory', 'helpful', 'Insurance', { notes: 'Walk through every room. Open every drawer. 10 minutes saves weeks of claims.' }));
+  items.push(vaultItem('Photos of Home Exterior + Interior', 'inventory', 'helpful', 'Insurance', { notes: 'Before disaster. Proves condition.' }));
+  items.push(vaultItem('Major Purchase Receipts', 'inventory', 'helpful', 'Insurance'));
+  items.push(vaultItem('Home Improvement Records', 'inventory', 'helpful', 'Insurance', { notes: 'Contractor invoices, permits. Increases claim value.' }));
+  items.push(vaultItem('Professional Licenses / Certifications', 'education', 'helpful', 'Personal', { notes: 'Hard to replace if lost' }));
+  items.push(vaultItem('Family Photos / Digital Backup', 'personal', 'helpful', 'Personal', { notes: 'Cloud backup or external drive. Irreplaceable.' }));
+
+  // Restore has_copy state from existing vault
+  const copyMap = new Map(data.vault.map(v => [v.id, v.has_copy]));
+  return items.map(i => ({ ...i, has_copy: copyMap.get(i.id) ?? false }));
+}
+
 export const STORAGE_KEY = 'ceg-household';
 
 export function loadHousehold(): HouseholdData {
-  if (typeof window === 'undefined') return { members: [], pets: [], locations: [], checklist: [] };
+  if (typeof window === 'undefined') return { members: [], pets: [], locations: [], checklist: [], vault: [], householdCode: '' };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Migrate old data missing new fields
+      if (!parsed.householdCode) parsed.householdCode = '';
+      if (!parsed.vault) parsed.vault = [];
+      return parsed;
+    }
   } catch { /* corrupt data — start fresh */ }
-  return { members: [], pets: [], locations: [], checklist: [] };
+  return { members: [], pets: [], locations: [], checklist: [], vault: [], householdCode: '' };
 }
 
 export function saveHousehold(data: HouseholdData): void {
