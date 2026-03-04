@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { logEvent } from '@/lib/analytics';
 import { isNfcSupported, startNfcScan } from '@/lib/nfc';
+import { cacheFccSession, getCachedFccSession, clearFccCache } from '@/lib/fcc-cache';
 
 type Screen = 'loading' | 'not_found' | 'access' | 'code_entry' | 'viewing' | 'expired';
 type AccessMethod = 'resident_code' | 'incident_number' | 'pcr_number' | 'temp_code';
@@ -310,6 +311,9 @@ export default function FccPublicEntry() {
       setContacts(unlock.contacts);
       setActiveMember(0);
 
+      // Cache unlock response for offline fallback
+      cacheFccSession(householdId, data).catch(() => {});
+
       const exp = new Date(unlock.expires_at);
       setExpiresAt(exp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
       setSessionExpiresMs(exp.getTime());
@@ -317,7 +321,33 @@ export default function FccPublicEntry() {
       setScreen('viewing');
       logEvent('fcc_ems_verified', { method: accessMethod, household: householdId });
     } catch {
-      setError('Network error. Check your connection.');
+      // Offline fallback: try IndexedDB cache
+      if (!navigator.onLine) {
+        try {
+          const cached = await getCachedFccSession(householdId);
+          if (cached) {
+            const unlock = cached as unknown as UnlockResponse;
+            setHouseholdData(unlock.household);
+            setMembers(unlock.members);
+            setContacts(unlock.contacts);
+            setActiveMember(0);
+            setIsOfflineData(true);
+
+            const exp = new Date(unlock.expires_at);
+            setExpiresAt(exp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+            setSessionExpiresMs(exp.getTime());
+            setRemaining(exp.getTime() - Date.now());
+            setScreen('viewing');
+            logEvent('fcc_ems_offline_cache_hit', { household: householdId });
+          } else {
+            setError('Offline — no cached data available.');
+          }
+        } catch {
+          setError('Offline — no cached data available.');
+        }
+      } else {
+        setError('Network error. Check your connection.');
+      }
     } finally {
       setVerifying(false);
     }
@@ -333,6 +363,7 @@ export default function FccPublicEntry() {
         setRemaining(0);
         setScreen('expired');
         // Clear FCC data cache on session expiry
+        clearFccCache().catch(() => {});
         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
           navigator.serviceWorker.controller.postMessage('CLEAR_FCC_CACHE');
         }

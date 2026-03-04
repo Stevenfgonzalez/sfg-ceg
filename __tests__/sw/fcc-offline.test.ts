@@ -1,131 +1,159 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { cacheFccSession, getCachedFccSession, clearFccCache, CachedSession } from '@/lib/fcc-cache';
 
-// Mock service worker globals
-const mockCacheStore = new Map<string, Map<string, Response>>();
+// ── IndexedDB mock ──
+// Vitest runs in Node (no real IndexedDB). We mock the full IDBFactory interface
+// at the minimum level needed by fcc-cache.ts.
 
-function createMockCache(name: string) {
-  const store = new Map<string, Response>();
-  mockCacheStore.set(name, store);
-  return {
-    put: vi.fn(async (req: Request | string, res: Response) => {
-      const key = typeof req === 'string' ? req : req.url;
-      store.set(key, res.clone());
+let dbStore: Map<string, CachedSession>;
+
+function createMockIndexedDB() {
+  dbStore = new Map();
+
+  const mockObjectStore = {
+    put: vi.fn((entry: CachedSession) => {
+      dbStore.set(entry.householdId, entry);
+      return mockRequest(undefined);
     }),
-    match: vi.fn(async (req: Request | string) => {
-      const key = typeof req === 'string' ? req : req.url;
-      const cached = store.get(key);
-      return cached ? cached.clone() : undefined;
+    get: vi.fn((key: string) => {
+      const result = dbStore.get(key) ?? undefined;
+      return mockRequest(result);
     }),
-    delete: vi.fn(async (req: Request | string) => {
-      const key = typeof req === 'string' ? req : req.url;
-      return store.delete(key);
+    delete: vi.fn((key: string) => {
+      dbStore.delete(key);
+      return mockRequest(undefined);
+    }),
+    clear: vi.fn(() => {
+      dbStore.clear();
+      return mockRequest(undefined);
     }),
   };
+
+  function mockRequest(result: unknown) {
+    const req: Record<string, unknown> = { result };
+    // onsuccess fires synchronously after microtask
+    queueMicrotask(() => {
+      if (typeof req.onsuccess === 'function') req.onsuccess();
+    });
+    return req;
+  }
+
+  const mockTransaction = {
+    objectStore: vi.fn(() => mockObjectStore),
+    oncomplete: null as (() => void) | null,
+    onerror: null as (() => void) | null,
+  };
+
+  // Auto-fire oncomplete on next microtask
+  const origObjectStore = mockTransaction.objectStore;
+  mockTransaction.objectStore = vi.fn((...args) => {
+    queueMicrotask(() => {
+      if (typeof mockTransaction.oncomplete === 'function') mockTransaction.oncomplete();
+    });
+    return origObjectStore(...args);
+  });
+
+  const mockDB = {
+    transaction: vi.fn(() => mockTransaction),
+    objectStoreNames: { contains: vi.fn(() => true) },
+    createObjectStore: vi.fn(),
+  };
+
+  const mockOpen = {
+    result: mockDB,
+    onsuccess: null as (() => void) | null,
+    onerror: null as (() => void) | null,
+    onupgradeneeded: null as (() => void) | null,
+  };
+
+  const mockIndexedDB = {
+    open: vi.fn(() => {
+      queueMicrotask(() => {
+        if (typeof mockOpen.onupgradeneeded === 'function') mockOpen.onupgradeneeded();
+        if (typeof mockOpen.onsuccess === 'function') mockOpen.onsuccess();
+      });
+      return mockOpen;
+    }),
+  };
+
+  // Install globally
+  (globalThis as Record<string, unknown>).indexedDB = mockIndexedDB;
+
+  return { mockObjectStore, mockTransaction, mockDB };
 }
 
-const mockCaches = {
-  open: vi.fn(async (name: string) => createMockCache(name)),
-  delete: vi.fn(async (name: string) => mockCacheStore.delete(name)),
-  keys: vi.fn(async () => Array.from(mockCacheStore.keys())),
-};
+let mocks: ReturnType<typeof createMockIndexedDB>;
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  mockCacheStore.clear();
+  mocks = createMockIndexedDB();
 });
 
-describe('FCC Offline Caching Logic', () => {
-  it('caches unlock response with timestamp header', async () => {
-    const cache = createMockCache('fcc-data-v1');
-    const unlockData = {
-      session_token: 'test-token',
-      expires_at: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
-      household: { id: 'h-1', name: 'Test' },
-      members: [],
-      contacts: [],
-    };
+afterEach(() => {
+  delete (globalThis as Record<string, unknown>).indexedDB;
+});
 
-    const response = new Response(JSON.stringify(unlockData), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+const SAMPLE_DATA = {
+  session_token: 'tok-abc',
+  expires_at: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
+  household: { id: 'h-1', name: 'Smith Family', address: '123 Main St' },
+  members: [{ id: 'm-1', full_name: 'John Smith' }],
+  contacts: [{ id: 'c-1', name: 'Jane Smith', phone: '555-1234' }],
+};
 
-    // Simulate caching with timestamp
-    const cloned = response.clone();
-    const body = await cloned.text();
-    const headers = new Headers(cloned.headers);
-    headers.set('X-FCC-Cached-At', String(Date.now()));
-    const cachedResp = new Response(body, {
-      status: 200,
-      headers,
-    });
-
-    const req = new Request('http://localhost/api/fcc/h-1/unlock', { method: 'POST' });
-    await cache.put(req, cachedResp);
-
-    const retrieved = await cache.match(req);
-    expect(retrieved).toBeDefined();
-    const cachedAt = retrieved!.headers.get('X-FCC-Cached-At');
-    expect(cachedAt).toBeTruthy();
-    expect(parseInt(cachedAt!, 10)).toBeGreaterThan(0);
+describe('FCC Client-Side Cache (fcc-cache.ts)', () => {
+  it('stores and retrieves session data', async () => {
+    await cacheFccSession('h-1', SAMPLE_DATA);
+    const result = await getCachedFccSession('h-1');
+    expect(result).toBeDefined();
+    expect((result as Record<string, unknown>).session_token).toBe('tok-abc');
   });
 
-  it('returns cached data with offline header when available', async () => {
-    const cache = createMockCache('fcc-data-v1');
-    const unlockData = { household: { id: 'h-1' }, members: [], contacts: [] };
-
-    const headers = new Headers({
-      'Content-Type': 'application/json',
-      'X-FCC-Cached-At': String(Date.now()),
-    });
-    const cachedResp = new Response(JSON.stringify(unlockData), { status: 200, headers });
-    const req = new Request('http://localhost/api/fcc/h-1/unlock', { method: 'POST' });
-    await cache.put(req, cachedResp);
-
-    const retrieved = await cache.match(req);
-    expect(retrieved).toBeDefined();
-
-    // Simulate adding offline header
-    const offlineHeaders = new Headers(retrieved!.headers);
-    offlineHeaders.set('X-FCC-Offline', 'true');
-    const offlineResponse = new Response(retrieved!.body, {
-      status: retrieved!.status,
-      headers: offlineHeaders,
-    });
-
-    expect(offlineResponse.headers.get('X-FCC-Offline')).toBe('true');
+  it('returns null for non-existent household', async () => {
+    const result = await getCachedFccSession('h-nonexistent');
+    expect(result).toBeNull();
   });
 
-  it('expires cached data after 4 hours', async () => {
-    const FCC_CACHE_TTL = 4 * 60 * 60 * 1000;
+  it('returns null and deletes expired data (>4h)', async () => {
+    // Manually insert an expired entry
     const fiveHoursAgo = Date.now() - 5 * 60 * 60 * 1000;
-
-    const headers = new Headers({
-      'Content-Type': 'application/json',
-      'X-FCC-Cached-At': String(fiveHoursAgo),
+    dbStore.set('h-old', {
+      householdId: 'h-old',
+      data: SAMPLE_DATA,
+      cachedAt: fiveHoursAgo,
     });
 
-    const cachedAt = parseInt(headers.get('X-FCC-Cached-At')!, 10);
-    const age = Date.now() - cachedAt;
-    expect(age).toBeGreaterThan(FCC_CACHE_TTL);
+    const result = await getCachedFccSession('h-old');
+    expect(result).toBeNull();
+    // Verify delete was called
+    expect(mocks.mockObjectStore.delete).toHaveBeenCalledWith('h-old');
   });
 
-  it('clears cache on CLEAR_FCC_CACHE message', async () => {
-    mockCacheStore.set('fcc-data-v1', new Map());
-    expect(mockCacheStore.has('fcc-data-v1')).toBe(true);
+  it('returns data that is still within 4h TTL', async () => {
+    const threeHoursAgo = Date.now() - 3 * 60 * 60 * 1000;
+    dbStore.set('h-recent', {
+      householdId: 'h-recent',
+      data: SAMPLE_DATA,
+      cachedAt: threeHoursAgo,
+    });
 
-    await mockCaches.delete('fcc-data-v1');
-    expect(mockCacheStore.has('fcc-data-v1')).toBe(false);
+    const result = await getCachedFccSession('h-recent');
+    expect(result).toBeDefined();
+    expect((result as Record<string, unknown>).session_token).toBe('tok-abc');
   });
 
-  it('preserves non-FCC caches on clear', async () => {
-    mockCacheStore.set('ceg-v2', new Map());
-    mockCacheStore.set('fcc-data-v1', new Map());
+  it('clearFccCache removes all entries', async () => {
+    dbStore.set('h-1', { householdId: 'h-1', data: SAMPLE_DATA, cachedAt: Date.now() });
+    dbStore.set('h-2', { householdId: 'h-2', data: SAMPLE_DATA, cachedAt: Date.now() });
 
-    // Only delete FCC cache
-    await mockCaches.delete('fcc-data-v1');
+    await clearFccCache();
+    expect(mocks.mockObjectStore.clear).toHaveBeenCalled();
+    expect(dbStore.size).toBe(0);
+  });
 
-    expect(mockCacheStore.has('ceg-v2')).toBe(true);
-    expect(mockCacheStore.has('fcc-data-v1')).toBe(false);
+  it('throws when IndexedDB is unavailable', async () => {
+    delete (globalThis as Record<string, unknown>).indexedDB;
+    await expect(cacheFccSession('h-1', SAMPLE_DATA)).rejects.toThrow('IndexedDB not available');
+    await expect(getCachedFccSession('h-1')).rejects.toThrow('IndexedDB not available');
+    await expect(clearFccCache()).rejects.toThrow('IndexedDB not available');
   });
 });
