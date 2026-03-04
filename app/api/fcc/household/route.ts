@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
+import { createServiceClient } from '@/lib/supabase';
 import { log } from '@/lib/logger';
 import { validateFccHouseholdBody } from '@/lib/api-validation';
 import { getFccAuth } from '@/lib/fcc-auth';
@@ -55,7 +56,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: result.error.error }, { status: result.error.status });
   }
 
-  const { data, error } = await supabase
+  // Use service client for insert to bypass RLS (auth already verified above)
+  const serviceClient = createServiceClient();
+  const { data, error } = await serviceClient
     .from('fcc_households')
     .insert({
       owner_id: user.id,

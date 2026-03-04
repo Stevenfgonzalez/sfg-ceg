@@ -4,12 +4,19 @@ import { NextRequest } from 'next/server';
 // ── Mocks ──
 
 const mockFrom = vi.fn();
+const mockServiceFrom = vi.fn();
 const mockGetUser = vi.fn();
 
 vi.mock('@/lib/supabase-auth-server', () => ({
   createAuthMiddlewareClient: () => ({
     auth: { getUser: mockGetUser },
     from: mockFrom,
+  }),
+}));
+
+vi.mock('@/lib/supabase', () => ({
+  createServiceClient: () => ({
+    from: mockServiceFrom,
   }),
 }));
 
@@ -134,7 +141,7 @@ describe('POST /api/fcc/household', () => {
 
   it('creates household and returns 201', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain(MOCK_HOUSEHOLD));
+    mockServiceFrom.mockReturnValue(mockChain(MOCK_HOUSEHOLD));
 
     const res = await POST(makeRequest('POST', {
       name: 'Delgado Household',
@@ -151,7 +158,7 @@ describe('POST /api/fcc/household', () => {
 
   it('returns 500 on insert error', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain(null, { message: 'unique constraint' }));
+    mockServiceFrom.mockReturnValue(mockChain(null, { message: 'unique constraint' }));
 
     const res = await POST(makeRequest('POST', {
       name: 'Test',
