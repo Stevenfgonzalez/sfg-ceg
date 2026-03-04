@@ -45,6 +45,7 @@ function parseUserAgent(ua: string): string {
 export default function FCCAccessLog() {
   const [logs, setLogs] = useState<AccessLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -53,7 +54,7 @@ export default function FCCAccessLog() {
         const data = await res.json();
         setLogs(data.logs || []);
       } catch {
-        // failed to load
+        setFetchError(true);
       } finally {
         setLoading(false);
       }
@@ -64,7 +65,7 @@ export default function FCCAccessLog() {
   return (
     <main className="min-h-screen bg-slate-900 text-white">
       <header className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-800">
-        <a href="/fcc" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
+        <a href="/fcc" aria-label="Back to dashboard" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
         <h1 className="text-lg font-bold flex-1">Access Log</h1>
         {logs.length > 0 && (
           <span className="text-xs text-slate-400 font-mono bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1">
@@ -79,11 +80,17 @@ export default function FCCAccessLog() {
           <p className="text-xs text-slate-400 mt-1">Every time EMS accesses your care card</p>
         </div>
 
+        {fetchError && (
+          <div className="bg-red-900/50 border border-red-700 rounded-lg px-4 py-3 text-center">
+            <p className="text-xs text-red-300">Failed to load access log. Check your connection and refresh.</p>
+          </div>
+        )}
+
         {loading ? (
           <div className="flex justify-center py-8">
             <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : logs.length === 0 ? (
+        ) : logs.length === 0 && !fetchError ? (
           <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 text-center">
             <div className="w-14 h-14 rounded-full bg-slate-700 flex items-center justify-center mx-auto mb-3 text-2xl">
               📋

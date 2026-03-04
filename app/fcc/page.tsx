@@ -129,6 +129,7 @@ export default function FCCDashboard() {
   const [loading, setLoading] = useState(true);
   const [lastAccess, setLastAccess] = useState<AccessLog | null>(null);
   const [accessLogCount, setAccessLogCount] = useState(0);
+  const [fetchError, setFetchError] = useState(false);
 
   useEffect(() => {
     const supabase = createAuthBrowserClient();
@@ -151,7 +152,7 @@ export default function FCCDashboard() {
         setAccessLogCount(logs.length);
         if (logs.length > 0) setLastAccess(logs[0]);
       } catch {
-        // fetch failed
+        setFetchError(true);
       } finally {
         setLoading(false);
       }
@@ -203,7 +204,7 @@ export default function FCCDashboard() {
     return (
       <main className="min-h-screen bg-slate-900 text-white">
         <header className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-800">
-          <a href="/" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
+          <a href="/" aria-label="Back to CEG home" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
           <h1 className="text-lg font-bold flex-1">Field Care Card</h1>
           {userEmail && (
             <button onClick={handleLogout} className="text-xs text-slate-400 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 active:bg-slate-700 transition-colors">
@@ -270,7 +271,7 @@ export default function FCCDashboard() {
     return (
       <main className="min-h-screen bg-slate-900 text-white">
         <header className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-800 print:hidden">
-          <button onClick={() => setShowPrint(false)} className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</button>
+          <button onClick={() => setShowPrint(false)} aria-label="Back to dashboard" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</button>
           <h1 className="text-lg font-bold">Print QR Card</h1>
         </header>
 
@@ -298,7 +299,7 @@ export default function FCCDashboard() {
             <div className="flex justify-center mb-3">
               {qrDataUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={qrDataUrl} alt="QR Code" width={140} height={140} className="border-2 border-black rounded-lg" />
+                <img src={qrDataUrl} alt="Field Care Card QR code for EMS scanning" width={140} height={140} className="border-2 border-black rounded-lg" />
               ) : (
                 <div className="w-[140px] h-[140px] bg-gray-100 border-2 border-black rounded-lg flex flex-col items-center justify-center">
                   <span className="text-[8px] font-bold text-gray-600 font-mono">GENERATING...</span>
@@ -384,6 +385,12 @@ export default function FCCDashboard() {
           )}
         </div>
 
+        {fetchError && (
+          <div className="bg-red-900/50 border border-red-700 rounded-lg px-4 py-3 text-center">
+            <p className="text-xs text-red-300">Failed to load data. Check your connection and refresh.</p>
+          </div>
+        )}
+
         {/* Profile completeness */}
         {pct < 100 && (
           <div className="bg-slate-800 rounded-xl border border-amber-800/50 p-4">
@@ -419,7 +426,7 @@ export default function FCCDashboard() {
             </div>
             {qrDataUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={qrDataUrl} alt="QR" width={48} height={48} className="w-12 h-12 rounded-lg border border-slate-600 shrink-0" />
+              <img src={qrDataUrl} alt="Household QR code" width={48} height={48} className="w-12 h-12 rounded-lg border border-slate-600 shrink-0" />
             ) : (
               <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-[10px] font-extrabold text-black font-mono shrink-0">
                 QR
@@ -480,6 +487,7 @@ export default function FCCDashboard() {
               setShowCode(!showCode);
               logEvent('fcc_toggle_code', { visible: !showCode });
             }}
+            aria-label={showCode ? 'Hide access code' : 'Reveal access code'}
             className={`w-full mt-3 rounded-lg px-4 py-3.5 font-extrabold transition-all ${
               showCode
                 ? 'bg-gradient-to-r from-green-900 to-green-800 border border-green-700 text-3xl tracking-[0.3em] font-mono text-white'

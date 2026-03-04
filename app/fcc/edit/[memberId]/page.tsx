@@ -167,7 +167,7 @@ export default function FCCMemberEditPage() {
     return (
       <main className="min-h-screen bg-slate-900 text-white">
         <header className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-800">
-          <a href="/fcc/edit" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
+          <a href="/fcc/edit" aria-label="Back to profiles" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
           <h1 className="text-lg font-bold">Member Not Found</h1>
         </header>
         <div className="px-4 pt-8 text-center">
@@ -181,7 +181,7 @@ export default function FCCMemberEditPage() {
   return (
     <main className="min-h-screen bg-slate-900 text-white">
       <header className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-800">
-        <a href="/fcc/edit" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
+        <a href="/fcc/edit" aria-label="Back to profiles" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
         <h1 className="text-lg font-bold flex-1">{full_name}</h1>
       </header>
 

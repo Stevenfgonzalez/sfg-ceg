@@ -382,7 +382,7 @@ export default function FccPublicEntry() {
                     <p className="text-[10px] text-slate-500 mt-1">The resident will receive a notification with a temporary code.</p>
                   </div>
                 </div>
-                <button onClick={() => setShowPush(false)} className="text-slate-400 text-base leading-none active:text-slate-300">×</button>
+                <button onClick={() => setShowPush(false)} aria-label="Dismiss notification" className="text-slate-400 text-base leading-none active:text-slate-300">×</button>
               </div>
             </div>
           </div>
@@ -416,6 +416,7 @@ export default function FccPublicEntry() {
         <header className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-800">
           <button
             onClick={() => { setScreen('access'); setError(''); setCodeInput(''); }}
+            aria-label="Back to access methods"
             className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg"
           >
             ←
@@ -484,9 +485,23 @@ export default function FccPublicEntry() {
   }
 
   // ── VIEWING SCREEN (EMS read-only care card) ──
-  if (screen !== 'viewing' || !householdData || members.length === 0) return null;
+  if (screen !== 'viewing' || !householdData || members.length === 0) {
+    return (
+      <main className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
+        <div className="text-center px-6">
+          <p className="text-4xl mb-3">🏥</p>
+          <p className="font-bold text-lg">Loading Care Card...</p>
+          <p className="text-sm text-slate-400 mt-2">If this persists, go back and try again.</p>
+          <button onClick={exitToHome} className="mt-6 bg-slate-800 border border-slate-700 rounded-lg px-6 py-3 text-sm font-semibold active:bg-slate-700">
+            Go to CEG Home
+          </button>
+        </div>
+      </main>
+    );
+  }
 
-  const member = members[activeMember];
+  const safeIndex = activeMember < members.length ? activeMember : 0;
+  const member = members[safeIndex];
   const clinical = getClinical(member);
   const isDNR = member.code_status === 'dnr' || member.code_status === 'dnr_polst';
 
@@ -514,13 +529,16 @@ export default function FccPublicEntry() {
       )}
 
       {/* Member tabs */}
-      <div className="flex bg-gray-900 border-b border-slate-800 overflow-x-auto">
+      <div role="tablist" aria-label="Household members" className="flex bg-gray-900 border-b border-slate-800 overflow-x-auto">
         {members.map((m, i) => (
           <button
             key={m.id}
+            role="tab"
+            aria-selected={i === safeIndex}
+            aria-label={`View ${m.full_name}`}
             onClick={() => setActiveMember(i)}
             className={`flex-1 py-2.5 text-xs font-semibold transition-colors whitespace-nowrap px-3 ${
-              i === activeMember
+              i === safeIndex
                 ? 'bg-slate-800 border-b-2 border-amber-500 text-white'
                 : 'text-slate-400'
             }`}

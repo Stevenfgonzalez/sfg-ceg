@@ -433,9 +433,9 @@ function Header({ title, backHref, onBack }: { title: string; backHref?: string;
   return (
     <header className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-800">
       {backHref ? (
-        <a href={backHref} className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
+        <a href={backHref} aria-label="Go back" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
       ) : (
-        <button onClick={onBack} className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</button>
+        <button onClick={onBack} aria-label="Go back" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</button>
       )}
       <h1 className="text-lg font-bold">{title}</h1>
     </header>

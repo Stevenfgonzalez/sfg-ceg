@@ -96,7 +96,7 @@ export default function FCCPrintPage() {
         const data = await res.json();
         setHousehold(data.household || null);
       } catch {
-        // fetch failed
+        // fetch failed — handled by !household check below
       } finally {
         setLoading(false);
       }
@@ -134,7 +134,7 @@ export default function FCCPrintPage() {
     return (
       <main className="min-h-screen bg-slate-900 text-white">
         <header className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-800">
-          <a href="/fcc" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
+          <a href="/fcc" aria-label="Back to dashboard" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
           <h1 className="text-lg font-bold">Print Formats</h1>
         </header>
         <div className="px-4 pt-8 text-center">
@@ -295,7 +295,7 @@ export default function FCCPrintPage() {
               )}
 
               <p className="text-center text-[7px] text-gray-400 mt-3 font-mono">
-                Not a medical record · safetyforgenerations.com
+                Not a medical record · SAFETYFORGENERATIONS.COM
               </p>
             </div>
           </div>
