@@ -78,37 +78,9 @@ async function getCachedFccData(request) {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // FCC unlock POST — network-first with offline fallback from cache
+  // FCC unlock POST — let network handle it normally, no SW interception
+  // POST requests with bodies can't be reliably cached or cloned in service workers
   if (url.pathname.match(/^\/api\/fcc\/[^/]+\/unlock$/) && event.request.method === 'POST') {
-    event.respondWith(
-      fetch(event.request.clone())
-        .then(async (response) => {
-          // Cache successful unlock responses
-          if (response.ok) {
-            const cache = await caches.open(FCC_DATA_CACHE);
-            const cloned = response.clone();
-            const body = await cloned.text();
-            const headers = new Headers(cloned.headers);
-            headers.set('X-FCC-Cached-At', String(Date.now()));
-            const cachedResp = new Response(body, {
-              status: cloned.status,
-              statusText: cloned.statusText,
-              headers,
-            });
-            await cache.put(event.request, cachedResp);
-          }
-          return response;
-        })
-        .catch(async () => {
-          // Offline — try cache
-          const cached = await getCachedFccData(event.request);
-          if (cached) return cached;
-          return new Response(JSON.stringify({ error: 'Offline and no cached data' }), {
-            status: 503,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        })
-    );
     return;
   }
 
