@@ -6,6 +6,32 @@ import { logEvent } from '@/lib/analytics';
 import { createAuthBrowserClient } from '@/lib/supabase-auth';
 import QRCode from 'qrcode';
 
+interface Clinical {
+  critical_flags?: { flag: string }[];
+  medications?: { name: string }[];
+  equipment?: { item: string }[];
+  life_needs?: string[];
+  history?: string[];
+  mobility_status?: string | null;
+}
+
+interface Member {
+  id: string;
+  full_name: string;
+  date_of_birth: string;
+  code_status: string;
+  baseline_mental?: string | null;
+  directive_location?: string | null;
+  fcc_member_clinical?: Clinical | Clinical[];
+}
+
+interface Contact {
+  id: string;
+  name: string;
+  relation: string;
+  phone: string;
+}
+
 interface Household {
   id: string;
   name: string;
@@ -23,8 +49,65 @@ interface Household {
   aed_onsite: boolean;
   backup_power?: string;
   member_count: number;
-  fcc_members?: unknown[];
-  fcc_emergency_contacts?: unknown[];
+  fcc_members?: Member[];
+  fcc_emergency_contacts?: Contact[];
+}
+
+interface AccessLog {
+  id: string;
+  access_method: string;
+  accessed_at: string;
+}
+
+const CODE_STATUS_LABELS: Record<string, string> = {
+  full_code: 'Full Code',
+  dnr: 'DNR',
+  dnr_polst: 'DNR/POLST',
+};
+
+function getClinical(m: Member): Clinical {
+  const c = m.fcc_member_clinical;
+  if (!c) return {};
+  if (Array.isArray(c)) return c[0] || {};
+  return c;
+}
+
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
+
+function profileCompleteness(household: Household): { pct: number; missing: string[] } {
+  const missing: string[] = [];
+  const members = household.fcc_members || [];
+  const contacts = household.fcc_emergency_contacts || [];
+
+  if (members.length === 0) missing.push('Add household members');
+  if (contacts.length === 0) missing.push('Add emergency contacts');
+  if (!household.best_door) missing.push('Best door entry');
+  if (!household.hazards && !household.animals && !household.stair_info) missing.push('Access details (hazards, animals, stairs)');
+
+  // Check if members have clinical data filled
+  let membersWithMeds = 0;
+  let membersWithFlags = 0;
+  for (const m of members) {
+    const c = getClinical(m);
+    if ((c.medications?.length || 0) > 0) membersWithMeds++;
+    if ((c.critical_flags?.length || 0) > 0) membersWithFlags++;
+  }
+  if (members.length > 0 && membersWithMeds === 0) missing.push('Add medications to members');
+  if (members.length > 0 && membersWithFlags === 0) missing.push('Add critical flags');
+
+  const total = 6; // base fields we check
+  const filled = total - missing.length;
+  return { pct: Math.round((filled / total) * 100), missing };
 }
 
 export default function FCCDashboard() {
@@ -35,6 +118,7 @@ export default function FCCDashboard() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [household, setHousehold] = useState<Household | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lastAccess, setLastAccess] = useState<AccessLog | null>(null);
   const [accessLogCount, setAccessLogCount] = useState(0);
 
   useEffect(() => {
@@ -54,7 +138,9 @@ export default function FCCDashboard() {
         const hData = await hRes.json();
         const logData = await logRes.json();
         setHousehold(hData.household || null);
-        setAccessLogCount(logData.logs?.length || 0);
+        const logs = logData.logs || [];
+        setAccessLogCount(logs.length);
+        if (logs.length > 0) setLastAccess(logs[0]);
       } catch {
         // fetch failed
       } finally {
@@ -166,6 +252,9 @@ export default function FCCDashboard() {
   }
 
   const address = [household.address_line1, household.address_line2].filter(Boolean).join(', ') + `, ${household.city}, ${household.state} ${household.zip}`;
+  const members = household.fcc_members || [];
+  const contacts = household.fcc_emergency_contacts || [];
+  const { pct, missing } = profileCompleteness(household);
 
   // ── PRINT QR SCREEN ──
   if (showPrint) {
@@ -280,13 +369,38 @@ export default function FCCDashboard() {
           )}
         </div>
 
+        {/* Profile completeness */}
+        {pct < 100 && (
+          <div className="bg-slate-800 rounded-xl border border-amber-800/50 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-amber-500 uppercase tracking-wider font-mono">Profile Completeness</p>
+              <span className="text-xs font-bold text-amber-400 font-mono">{pct}%</span>
+            </div>
+            <div className="w-full bg-slate-700 rounded-full h-2 mb-3">
+              <div
+                className="bg-gradient-to-r from-amber-600 to-amber-400 h-2 rounded-full transition-all"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <div className="space-y-1">
+              {missing.map((item) => (
+                <p key={item} className="text-xs text-slate-400 flex gap-2">
+                  <span className="text-amber-500">·</span> {item}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Household card */}
         <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
           <div className="flex items-start justify-between">
             <div>
               <p className="font-bold text-base">{household.name}</p>
               <p className="text-xs text-slate-400 mt-0.5">{address}</p>
-              <p className="text-xs text-slate-400 mt-0.5">{household.member_count} member{household.member_count !== 1 ? 's' : ''} registered</p>
+              {household.hazards && (
+                <p className="text-xs text-red-400 mt-1 font-semibold">{household.hazards}</p>
+              )}
             </div>
             <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-[10px] font-extrabold text-black font-mono shrink-0">
               QR
@@ -309,6 +423,33 @@ export default function FCCDashboard() {
             </button>
           </div>
         </div>
+
+        {/* Member summary */}
+        {members.length > 0 && (
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
+            <p className="text-xs font-bold text-amber-500 uppercase tracking-wider font-mono mb-3">
+              Members ({members.length})
+            </p>
+            {members.map((m, i) => {
+              const c = getClinical(m);
+              const flagCount = c.critical_flags?.length || 0;
+              const medCount = c.medications?.length || 0;
+              const isDNR = m.code_status === 'dnr' || m.code_status === 'dnr_polst';
+              return (
+                <div key={m.id} className={`flex items-center justify-between py-2 ${i < members.length - 1 ? 'border-b border-slate-700' : ''}`}>
+                  <div>
+                    <p className="text-sm font-semibold">{m.full_name}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {flagCount} flag{flagCount !== 1 ? 's' : ''} · {medCount} med{medCount !== 1 ? 's' : ''}
+                      {isDNR && <span className="text-red-400 ml-1.5 font-semibold">{CODE_STATUS_LABELS[m.code_status]}</span>}
+                    </p>
+                  </div>
+                  <a href={`/fcc/edit/${m.id}`} className="text-xs text-blue-400 font-semibold shrink-0">Edit</a>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Permanent access code */}
         <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
@@ -334,15 +475,35 @@ export default function FCCDashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="font-bold text-sm">Access Log</p>
-              <p className="text-xs text-slate-500 italic mt-0.5">
-                {accessLogCount === 0
-                  ? 'No emergency access events recorded'
-                  : `${accessLogCount} access event${accessLogCount !== 1 ? 's' : ''}`}
-              </p>
+              {accessLogCount === 0 ? (
+                <p className="text-xs text-slate-500 italic mt-0.5">No emergency access events recorded</p>
+              ) : (
+                <div className="mt-0.5">
+                  <p className="text-xs text-slate-400">
+                    {accessLogCount} event{accessLogCount !== 1 ? 's' : ''}
+                    {lastAccess && (
+                      <span className="text-slate-500"> · Last: {relativeTime(lastAccess.accessed_at)}</span>
+                    )}
+                  </p>
+                </div>
+              )}
             </div>
             <span className="text-slate-500 text-sm">→</span>
           </div>
         </a>
+
+        {/* Emergency contacts summary */}
+        {contacts.length > 0 && (
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
+            <p className="text-xs font-bold text-amber-500 uppercase tracking-wider font-mono mb-2">Emergency Contacts ({contacts.length})</p>
+            {contacts.map((c, i) => (
+              <div key={c.id} className={`flex items-center justify-between py-1.5 ${i < contacts.length - 1 ? 'border-b border-slate-700' : ''}`}>
+                <p className="text-sm">{c.name} <span className="text-xs text-slate-400">· {c.relation}</span></p>
+                <a href={`tel:${c.phone.replace(/\D/g, '')}`} className="text-xs text-blue-400 font-mono shrink-0">{c.phone}</a>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Simulate EMS scan */}
         <a

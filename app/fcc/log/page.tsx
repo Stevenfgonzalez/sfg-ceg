@@ -13,11 +13,34 @@ interface AccessLog {
   user_agent: string | null;
 }
 
-const METHOD_LABELS: Record<string, string> = {
-  resident_code: 'Resident Code',
-  incident_number: 'Incident #',
-  pcr_number: 'PCR #',
+const METHOD_CONFIG: Record<string, { label: string; color: string }> = {
+  resident_code: { label: 'Resident Code', color: 'bg-blue-900/60 text-blue-300 border-blue-700' },
+  incident_number: { label: 'Incident #', color: 'bg-amber-900/60 text-amber-300 border-amber-700' },
+  pcr_number: { label: 'PCR #', color: 'bg-emerald-900/60 text-emerald-300 border-emerald-700' },
 };
+
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
+
+function parseUserAgent(ua: string): string {
+  if (ua.includes('iPhone')) return 'iPhone';
+  if (ua.includes('iPad')) return 'iPad';
+  if (ua.includes('Android')) return 'Android';
+  if (ua.includes('Mac')) return 'Mac';
+  if (ua.includes('Windows')) return 'Windows';
+  if (ua.includes('Linux')) return 'Linux';
+  return 'Unknown';
+}
 
 export default function FCCAccessLog() {
   const [logs, setLogs] = useState<AccessLog[]>([]);
@@ -42,7 +65,12 @@ export default function FCCAccessLog() {
     <main className="min-h-screen bg-slate-900 text-white">
       <header className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-800">
         <a href="/fcc" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
-        <h1 className="text-lg font-bold">Access Log</h1>
+        <h1 className="text-lg font-bold flex-1">Access Log</h1>
+        {logs.length > 0 && (
+          <span className="text-xs text-slate-400 font-mono bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1">
+            {logs.length}
+          </span>
+        )}
       </header>
 
       <div className="px-4 pt-5 space-y-4 pb-8">
@@ -63,7 +91,7 @@ export default function FCCAccessLog() {
             <p className="font-bold text-sm">No Access Events</p>
             <p className="text-xs text-slate-400 mt-1">
               When someone unlocks your Field Care Card via QR scan,<br/>
-              the event will appear here with time, method, and duration.
+              the event will appear here.
             </p>
           </div>
         ) : (
@@ -71,26 +99,41 @@ export default function FCCAccessLog() {
             {logs.map((log) => {
               const date = new Date(log.accessed_at);
               const expires = new Date(log.expires_at);
+              const isExpired = expires.getTime() < Date.now();
+              const config = METHOD_CONFIG[log.access_method] || { label: log.access_method, color: 'bg-slate-700 text-slate-300 border-slate-600' };
+
               return (
                 <div key={log.id} className="bg-slate-800 rounded-xl border border-slate-700 p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="font-bold text-sm">
-                      {date.toLocaleDateString()} · {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                    <span className="text-[10px] text-slate-400 font-mono bg-slate-700 px-2 py-0.5 rounded">
-                      {METHOD_LABELS[log.access_method] || log.access_method}
-                    </span>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-semibold font-mono px-2 py-0.5 rounded border ${config.color}`}>
+                        {config.label}
+                      </span>
+                      <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                        isExpired
+                          ? 'bg-slate-700 text-slate-500'
+                          : 'bg-green-900/60 text-green-400 border border-green-800'
+                      }`}>
+                        {isExpired ? 'Expired' : 'Active'}
+                      </span>
+                    </div>
+                    <span className="text-xs text-slate-500">{relativeTime(log.accessed_at)}</span>
                   </div>
-                  <div className="text-xs text-slate-400 space-y-0.5">
-                    {log.access_method !== 'resident_code' && (
-                      <p>Value: <span className="font-mono">{log.access_value}</span></p>
+
+                  <p className="text-sm font-semibold">
+                    {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+
+                  <div className="text-xs text-slate-400 mt-1.5 space-y-0.5">
+                    {log.access_method !== 'resident_code' && log.access_value !== '****' && (
+                      <p>ID: <span className="font-mono text-slate-300">{log.access_value}</span></p>
                     )}
-                    {log.agency_code && <p>Agency: {log.agency_code}</p>}
-                    <p>Expires: {expires.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                    {log.ip_address && <p className="text-slate-500">IP: {log.ip_address}</p>}
-                    {log.user_agent && (
-                      <p className="text-slate-500 truncate">Device: {log.user_agent.slice(0, 60)}</p>
-                    )}
+                    {log.agency_code && <p>Agency: <span className="text-slate-300">{log.agency_code}</span></p>}
+                    <p className="text-slate-500">
+                      Expires {expires.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {log.ip_address && ` · ${log.ip_address}`}
+                      {log.user_agent && ` · ${parseUserAgent(log.user_agent)}`}
+                    </p>
                   </div>
                 </div>
               );
@@ -101,10 +144,10 @@ export default function FCCAccessLog() {
         <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono mb-2">What gets logged</p>
           <ul className="text-xs text-slate-400 space-y-1.5">
-            <li>Date and time of access</li>
-            <li>Access method used (incident #, PCR #, or resident code)</li>
-            <li>Session expiration time</li>
-            <li>IP address and device type</li>
+            <li>· Date and time of access</li>
+            <li>· Access method (resident code, incident #, PCR #)</li>
+            <li>· Session status (active or expired)</li>
+            <li>· IP address and device type</li>
           </ul>
         </div>
       </div>
