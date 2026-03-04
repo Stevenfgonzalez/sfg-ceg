@@ -48,11 +48,11 @@ export function _formatSmsMessage(p: AlertPayload): string {
   return lines.join('\n');
 }
 
-async function sendSms(message: string): Promise<void> {
+async function sendSms(message: string, toOverride?: string): Promise<void> {
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
   const from = process.env.TWILIO_FROM_NUMBER;
-  const to = process.env.ALERT_PHONE;
+  const to = toOverride || process.env.ALERT_PHONE;
 
   if (!sid || !token || !from || !to) return;
 
@@ -99,6 +99,28 @@ async function sendWebhook(payload: AlertPayload): Promise<void> {
   if (!res.ok) {
     throw new Error(`Webhook ${res.status}`);
   }
+}
+
+/**
+ * Fire-and-forget: send a temporary FCC access code via SMS.
+ * No-op if Twilio env vars not configured.
+ */
+export function sendFccTempCodeSms(phone: string, code: string, householdName: string): void {
+  const message = [
+    '[SFG Field Care Card]',
+    `Temporary access code for ${householdName}: ${code}`,
+    'Valid for 30 minutes. Share with responding EMS only.',
+    'If you did not request this, ignore this message.',
+  ].join('\n');
+
+  sendSms(message, phone).catch((err) => {
+    log({
+      level: 'warn',
+      event: 'fcc_temp_code_sms_failed',
+      route: '/lib/alerting',
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
 }
 
 /**

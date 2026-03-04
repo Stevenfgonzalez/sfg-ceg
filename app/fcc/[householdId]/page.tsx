@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { logEvent } from '@/lib/analytics';
 
 type Screen = 'loading' | 'not_found' | 'access' | 'code_entry' | 'viewing' | 'expired';
-type AccessMethod = 'resident_code' | 'incident_number' | 'pcr_number';
+type AccessMethod = 'resident_code' | 'incident_number' | 'pcr_number' | 'temp_code';
 type FlagType = 'allergy' | 'med' | 'equipment' | 'safety';
 
 interface PublicInfo {
@@ -182,7 +182,6 @@ export default function FccPublicEntry() {
   const [expiresAt, setExpiresAt] = useState('');
   const [sessionExpiresMs, setSessionExpiresMs] = useState<number | null>(null);
   const [remaining, setRemaining] = useState<number | null>(null);
-  const [showPush, setShowPush] = useState(false);
 
   // Fetch public household info on mount
   useEffect(() => {
@@ -240,7 +239,9 @@ export default function FccPublicEntry() {
           setError(
             accessMethod === 'resident_code'
               ? 'Invalid code. Request code from resident or use Incident/PCR number.'
-              : 'Could not verify. Try another access method or contact dispatch.'
+              : accessMethod === 'temp_code'
+                ? 'Invalid or expired temporary code. Request a new code from the household.'
+                : 'Could not verify. Try another access method or contact dispatch.'
           );
         } else {
           setError(data.error || 'Verification failed');
@@ -428,42 +429,17 @@ export default function FccPublicEntry() {
             </div>
           </button>
 
-          <div className="h-px bg-slate-700 my-1" />
-
           <button
-            onClick={() => {
-              logEvent('fcc_ems_temp_code_request');
-              setShowPush(true);
-              setTimeout(() => setShowPush(false), 8000);
-              handleSelectMethod('resident_code');
-            }}
-            className="w-full flex items-center gap-3 bg-slate-800 rounded-xl px-4 py-3.5 border border-slate-700 active:border-blue-500 transition-colors text-left"
+            onClick={() => handleSelectMethod('temp_code')}
+            className="w-full flex items-center gap-3 bg-slate-800 rounded-xl px-4 py-3.5 border border-purple-800/50 active:border-purple-500 transition-colors text-left"
           >
             <span className="text-2xl">📱</span>
             <div>
-              <p className="font-bold text-sm">Request Temp Code</p>
-              <p className="text-xs text-slate-400">Push notification to resident&apos;s device</p>
+              <p className="font-bold text-sm text-purple-300">Temporary Code</p>
+              <p className="text-xs text-slate-400">6-digit code sent by household member</p>
             </div>
           </button>
         </div>
-
-        {showPush && (
-          <div className="fixed top-3 left-3 right-3 z-50 animate-slide-down">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-3.5 border border-amber-500 shadow-2xl">
-              <div className="flex justify-between items-start">
-                <div className="flex gap-2.5 items-start">
-                  <div className="w-9 h-9 rounded-lg bg-amber-500 flex items-center justify-center text-[10px] font-extrabold text-black font-mono shrink-0">SFG</div>
-                  <div>
-                    <p className="text-xs font-bold">Emergency Access Requested</p>
-                    <p className="text-xs text-slate-400 mt-0.5">Someone scanned your Field Care Card QR</p>
-                    <p className="text-[10px] text-slate-500 mt-1">The resident will receive a notification with a temporary code.</p>
-                  </div>
-                </div>
-                <button onClick={() => setShowPush(false)} aria-label="Dismiss notification" className="text-slate-400 text-base leading-none active:text-slate-300">×</button>
-              </div>
-            </div>
-          </div>
-        )}
 
         <div className="px-4 pb-8 text-center">
           <button
@@ -483,6 +459,7 @@ export default function FccPublicEntry() {
       resident_code: { icon: '🔑', label: 'Resident Code', desc: 'Code provided by resident or dispatch', placeholder: '• • • •', maxLen: 10, isBig: true },
       incident_number: { icon: '📋', label: 'Incident Number', desc: 'From your CAD dispatch sheet', placeholder: 'INC-2026-', maxLen: 20, isBig: false },
       pcr_number: { icon: '📄', label: 'PCR Number', desc: 'Patient Care Report number', placeholder: 'PCR-', maxLen: 20, isBig: false },
+      temp_code: { icon: '📱', label: 'Temporary Code', desc: '6-digit code sent by household member', placeholder: '• • • • • •', maxLen: 6, isBig: true },
     };
 
     const method = accessMethod!;
@@ -511,10 +488,10 @@ export default function FccPublicEntry() {
 
             <input
               type="text"
-              inputMode={method === 'resident_code' ? 'numeric' : 'text'}
+              inputMode={method === 'resident_code' || method === 'temp_code' ? 'numeric' : 'text'}
               value={codeInput}
               onChange={(e) => {
-                const val = method === 'resident_code'
+                const val = method === 'resident_code' || method === 'temp_code'
                   ? e.target.value.replace(/\D/g, '')
                   : e.target.value;
                 setCodeInput(val.slice(0, config.maxLen));
@@ -533,9 +510,9 @@ export default function FccPublicEntry() {
 
             <button
               onClick={handleVerify}
-              disabled={codeInput.length < 4 || verifying}
+              disabled={(method === 'temp_code' ? codeInput.length !== 6 : codeInput.length < 4) || verifying}
               className={`w-full mt-4 rounded-lg px-4 py-3.5 font-bold text-sm transition-all ${
-                codeInput.length >= 4
+                (method === 'temp_code' ? codeInput.length === 6 : codeInput.length >= 4)
                   ? 'bg-blue-600 text-white active:bg-blue-700'
                   : 'bg-slate-900 text-slate-500'
               } disabled:opacity-60`}

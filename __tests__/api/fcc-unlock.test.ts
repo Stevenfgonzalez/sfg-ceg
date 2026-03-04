@@ -279,4 +279,73 @@ describe('POST /api/fcc/[householdId]/unlock', () => {
     );
     expect(res.status).toBe(200);
   });
+
+  it('unlocks successfully with valid temp_code', async () => {
+    const callIndex = { value: 0 };
+    mockFrom.mockImplementation(() => {
+      callIndex.value++;
+      if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD); // household fetch
+      if (callIndex.value === 2) return { // temp code lookup
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        is: vi.fn().mockReturnThis(),
+        gt: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: { id: 'tc-1' }, error: null }),
+      };
+      if (callIndex.value === 3) return { // mark temp code used
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      };
+      if (callIndex.value === 4) return { // members
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: [MOCK_MEMBER], error: null }),
+      };
+      if (callIndex.value === 5) return { // contacts
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: [MOCK_CONTACT], error: null }),
+      };
+      return { insert: vi.fn().mockResolvedValue({ error: null }) }; // access log
+    });
+
+    const res = await unlock(
+      makeRequest('POST', '/api/fcc/h-1/unlock', { access_method: 'temp_code', access_value: '482791' }),
+      makeParams('h-1')
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.session_token).toBeDefined();
+  });
+
+  it('returns 401 for invalid temp_code', async () => {
+    const callIndex = { value: 0 };
+    mockFrom.mockImplementation(() => {
+      callIndex.value++;
+      if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
+      return { // temp code not found
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        is: vi.fn().mockReturnThis(),
+        gt: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: null, error: { message: 'not found' } }),
+      };
+    });
+
+    const res = await unlock(
+      makeRequest('POST', '/api/fcc/h-1/unlock', { access_method: 'temp_code', access_value: '000000' }),
+      makeParams('h-1')
+    );
+    expect(res.status).toBe(401);
+    const json = await res.json();
+    expect(json.error).toMatch(/temporary code/i);
+  });
+
+  it('returns 400 for temp_code that is not 6 digits', async () => {
+    const res = await unlock(
+      makeRequest('POST', '/api/fcc/h-1/unlock', { access_method: 'temp_code', access_value: '1234' }),
+      makeParams('h-1')
+    );
+    expect(res.status).toBe(400);
+  });
 });

@@ -385,7 +385,7 @@ export function validateCheckinUpdateBody(
 // ── FCC Validators ──
 
 const VALID_CODE_STATUSES = ['full_code', 'dnr', 'dnr_polst', 'comfort_care'] as const;
-const VALID_ACCESS_METHODS = ['resident_code', 'incident_number', 'pcr_number'] as const;
+const VALID_ACCESS_METHODS = ['resident_code', 'incident_number', 'pcr_number', 'temp_code'] as const;
 const STATE_REGEX = /^[A-Z]{2}$/;
 const ZIP_REGEX = /^\d{5}(-\d{4})?$/;
 const DOB_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -549,7 +549,7 @@ export interface FccUnlockInput {
 export function validateFccUnlockBody(body: Record<string, unknown>): ValidationResult<FccUnlockInput> {
   const access_method = safeTrimmedString(body.access_method, 50);
   if (!access_method || !VALID_ACCESS_METHODS.includes(access_method as typeof VALID_ACCESS_METHODS[number])) {
-    return { ok: false, error: { error: 'Invalid access_method. Use resident_code, incident_number, or pcr_number', status: 400 } };
+    return { ok: false, error: { error: 'Invalid access_method. Use resident_code, incident_number, pcr_number, or temp_code', status: 400 } };
   }
 
   const access_value = safeTrimmedString(body.access_value, 100);
@@ -561,7 +561,11 @@ export function validateFccUnlockBody(body: Record<string, unknown>): Validation
     return { ok: false, error: { error: 'Access code must be at least 4 characters', status: 400 } };
   }
 
-  if (access_method !== 'resident_code' && access_value.length < 4) {
+  if (access_method === 'temp_code' && access_value.length !== 6) {
+    return { ok: false, error: { error: 'Temporary code must be exactly 6 digits', status: 400 } };
+  }
+
+  if (access_method !== 'resident_code' && access_method !== 'temp_code' && access_value.length < 4) {
     return { ok: false, error: { error: 'Invalid access value', status: 400 } };
   }
 

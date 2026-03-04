@@ -134,6 +134,10 @@ export default function FCCDashboard() {
   const [accessLogCount, setAccessLogCount] = useState(0);
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState(false);
+  const [showTempCodeModal, setShowTempCodeModal] = useState(false);
+  const [tempCodePhone, setTempCodePhone] = useState('');
+  const [tempCodeSending, setTempCodeSending] = useState(false);
+  const [tempCodeResult, setTempCodeResult] = useState<{ success: boolean; message: string } | null>(null);
 
   useEffect(() => {
     const supabase = createAuthBrowserClient();
@@ -191,6 +195,30 @@ export default function FCCDashboard() {
       setRevokingId(null);
     }
   }, []);
+
+  const handleSendTempCode = useCallback(async () => {
+    if (!household || tempCodeSending) return;
+    setTempCodeSending(true);
+    setTempCodeResult(null);
+    try {
+      const res = await fetch(`/api/fcc/${household.id}/request-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: tempCodePhone }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTempCodeResult({ success: true, message: `Code sent to ${data.sent_to}. Valid 30 min.` });
+        logEvent('fcc_temp_code_sent');
+      } else {
+        setTempCodeResult({ success: false, message: data.error || 'Failed to send code' });
+      }
+    } catch {
+      setTempCodeResult({ success: false, message: 'Network error' });
+    } finally {
+      setTempCodeSending(false);
+    }
+  }, [household, tempCodePhone, tempCodeSending]);
 
   const generateQR = useCallback(async () => {
     if (!household) return;
@@ -520,6 +548,50 @@ export default function FCCDashboard() {
           >
             {showCode ? household.access_code.split('').join(' ') : 'Tap to Reveal Code'}
           </button>
+        </div>
+
+        {/* Send Temp Code */}
+        <div className="bg-slate-800 rounded-xl border border-purple-800/50 p-4">
+          <p className="font-bold text-sm">Send Temporary Code</p>
+          <p className="text-xs text-slate-400 mt-0.5">Send a one-time 6-digit code via SMS for EMS access (valid 30 min)</p>
+          {!showTempCodeModal ? (
+            <button
+              onClick={() => { setShowTempCodeModal(true); setTempCodeResult(null); setTempCodePhone(''); }}
+              className="w-full mt-3 bg-purple-900/60 border border-purple-700 rounded-lg px-4 py-3 text-sm font-semibold text-purple-300 active:bg-purple-900/80 transition-colors"
+            >
+              Send Temp Code via SMS
+            </button>
+          ) : (
+            <div className="mt-3 space-y-2">
+              <input
+                type="tel"
+                value={tempCodePhone}
+                onChange={(e) => setTempCodePhone(e.target.value)}
+                placeholder="(602) 555-0142"
+                className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-sm font-mono placeholder:text-slate-600 focus:outline-none focus:border-purple-500 transition-colors"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSendTempCode}
+                  disabled={tempCodePhone.replace(/\D/g, '').length < 10 || tempCodeSending}
+                  className="flex-1 bg-purple-700 rounded-lg px-4 py-2.5 text-sm font-bold active:bg-purple-800 transition-colors disabled:opacity-50"
+                >
+                  {tempCodeSending ? 'Sending...' : 'Send Code'}
+                </button>
+                <button
+                  onClick={() => { setShowTempCodeModal(false); setTempCodeResult(null); }}
+                  className="bg-slate-700 rounded-lg px-4 py-2.5 text-sm font-semibold active:bg-slate-600 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+              {tempCodeResult && (
+                <p className={`text-xs text-center ${tempCodeResult.success ? 'text-green-400' : 'text-red-400'}`}>
+                  {tempCodeResult.message}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Access log */}

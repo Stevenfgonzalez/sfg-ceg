@@ -66,12 +66,31 @@ export async function POST(
 
   // Validate access
   if (accessMethod === 'resident_code') {
-    // Compare hashed access code
-    // For pilot: direct comparison (hash implementation comes with production hardening)
     if (accessValue !== household.access_code) {
       log({ level: 'warn', event: 'fcc_unlock_failed', route: `/api/fcc/${params.householdId}/unlock`, meta: { method: accessMethod } });
       return NextResponse.json({ error: 'Invalid access code' }, { status: 401 });
     }
+  } else if (accessMethod === 'temp_code') {
+    // Look up unused, unexpired temp code
+    const { data: tempCode, error: tcErr } = await supabase
+      .from('fcc_temp_codes')
+      .select('id')
+      .eq('household_id', params.householdId)
+      .eq('code', accessValue)
+      .is('used_at', null)
+      .gt('expires_at', new Date().toISOString())
+      .single();
+
+    if (tcErr || !tempCode) {
+      log({ level: 'warn', event: 'fcc_unlock_failed', route: `/api/fcc/${params.householdId}/unlock`, meta: { method: accessMethod } });
+      return NextResponse.json({ error: 'Invalid or expired temporary code' }, { status: 401 });
+    }
+
+    // Mark code as used (single-use)
+    await supabase
+      .from('fcc_temp_codes')
+      .update({ used_at: new Date().toISOString() })
+      .eq('id', tempCode.id);
   } else {
     // Incident number and PCR number: validate format (4+ chars)
     if (accessValue.length < 4) {
@@ -105,7 +124,7 @@ export async function POST(
   await supabase.from('fcc_access_logs').insert({
     household_id: params.householdId,
     access_method: accessMethod,
-    access_value: accessMethod === 'resident_code' ? '****' : accessValue,
+    access_value: (accessMethod === 'resident_code' || accessMethod === 'temp_code') ? '****' : accessValue,
     agency_code: agencyCode,
     session_token: signature.slice(0, 16), // store partial for reference
     expires_at: new Date(exp * 1000).toISOString(),
