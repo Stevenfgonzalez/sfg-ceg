@@ -153,6 +153,15 @@ const CODE_STATUS_LABELS: Record<string, string> = {
   dnr_polst: 'DNR/POLST',
 };
 
+function calcAge(dob: string): number {
+  const birth = new Date(dob);
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const m = now.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
+  return age;
+}
+
 // ── Main page ──
 
 export default function FccPublicEntry() {
@@ -526,7 +535,7 @@ export default function FccPublicEntry() {
         <SectionHeader icon="👤" title="Identification" color="text-blue-400" />
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
           <p><span className="text-slate-400">Name:</span> <span className="font-semibold">{member.full_name}</span></p>
-          <p><span className="text-slate-400">DOB:</span> <span className="font-semibold">{member.date_of_birth}</span></p>
+          <p><span className="text-slate-400">DOB:</span> <span className="font-semibold">{member.date_of_birth}</span> <span className="text-blue-400 font-bold">({calcAge(member.date_of_birth)} y/o)</span></p>
           {member.baseline_mental && (
             <p className="col-span-2"><span className="text-slate-400">Baseline:</span> <span className="font-semibold">{member.baseline_mental}</span></p>
           )}
@@ -625,6 +634,15 @@ export default function FccPublicEntry() {
           )}
           {householdData.animals && (
             <p><span className="text-amber-400 font-bold">Animals:</span> {householdData.animals}</p>
+          )}
+          {householdData.stair_info && (
+            <p><span className="text-amber-400 font-bold">Stairs:</span> {householdData.stair_info}</p>
+          )}
+          {householdData.aed_onsite && (
+            <p><span className="text-green-400 font-bold">AED:</span> On site</p>
+          )}
+          {householdData.backup_power && (
+            <p><span className="text-amber-400 font-bold">Backup Power:</span> {householdData.backup_power}</p>
           )}
           {householdData.hazards && (
             <div className="mt-2 bg-red-900/60 rounded px-2.5 py-1.5 font-semibold text-red-300">

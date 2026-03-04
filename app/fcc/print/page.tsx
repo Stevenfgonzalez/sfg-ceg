@@ -63,6 +63,15 @@ const CODE_STATUS_LABELS: Record<string, string> = {
   dnr_polst: 'DNR/POLST',
 };
 
+function calcAge(dob: string): number {
+  const birth = new Date(dob);
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const m = now.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
+  return age;
+}
+
 function getClinical(m: Member): Clinical {
   const c = m.fcc_member_clinical;
   if (!c) return emptyClinical();
@@ -321,12 +330,12 @@ export default function FCCPrintPage() {
               </div>
             )}
 
-            {members.map((member) => {
+            {members.map((member, idx) => {
               const clinical = getClinical(member);
               return (
-                <div key={member.id} className="border-t-2 border-black pt-3 mt-4">
+                <div key={member.id} className={`border-t-2 border-black pt-3 mt-4 ${idx > 0 ? 'print:break-before-page' : ''}`} style={{ breakInside: 'avoid' }}>
                   <p className="font-bold text-sm uppercase tracking-wide">
-                    {member.full_name} <span className="font-normal text-gray-500 ml-2">DOB: {member.date_of_birth}</span>
+                    {member.full_name} <span className="font-normal text-gray-500 ml-2">DOB: {member.date_of_birth} (Age {calcAge(member.date_of_birth)})</span>
                   </p>
                   <div className="grid grid-cols-2 gap-x-4 mt-1">
                     <p>Code Status: <strong>{CODE_STATUS_LABELS[member.code_status] || member.code_status}</strong></p>
@@ -399,7 +408,7 @@ export default function FCCPrintPage() {
               {household.gate_code && <p>Gate Code: {household.gate_code}</p>}
               {household.animals && <p>Animals: {household.animals}</p>}
               {household.stair_info && <p>Stairs: {household.stair_info}</p>}
-              <p>AED: {household.aed_onsite ? 'Yes' : 'No'}</p>
+              <p>AED: {household.aed_onsite ? 'Yes — on site' : 'No'}</p>
               {household.backup_power && <p>Backup Power: {household.backup_power}</p>}
             </div>
 
@@ -422,7 +431,17 @@ export default function FCCPrintPage() {
 
       <style jsx>{`
         @media print {
-          main { background: white !important; color: black !important; min-height: auto !important; }
+          main {
+            background: white !important;
+            color: black !important;
+            min-height: auto !important;
+            padding: 0 !important;
+          }
+          /* Hide everything except the print preview */
+          main > div:first-of-type { padding: 0 !important; }
+        }
+        @media print and (orientation: portrait) {
+          @page { margin: 0.25in; }
         }
       `}</style>
     </main>

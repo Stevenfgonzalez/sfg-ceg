@@ -84,6 +84,15 @@ function relativeTime(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
+function calcAge(dob: string): number {
+  const birth = new Date(dob);
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const m = now.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
+  return age;
+}
+
 function profileCompleteness(household: Household): { pct: number; missing: string[] } {
   const missing: string[] = [];
   const members = household.fcc_members || [];
@@ -173,10 +182,10 @@ export default function FCCDashboard() {
   }, [household]);
 
   useEffect(() => {
-    if (showPrint && !qrDataUrl) {
+    if (household && !qrDataUrl) {
       generateQR();
     }
-  }, [showPrint, qrDataUrl, generateQR]);
+  }, [household, qrDataUrl, generateQR]);
 
   if (loading) {
     return (
@@ -340,7 +349,13 @@ export default function FCCDashboard() {
 
         <style jsx>{`
           @media print {
-            main { background: white !important; color: black !important; min-height: auto !important; }
+            main {
+              background: white !important;
+              color: black !important;
+              min-height: auto !important;
+              padding: 0 !important;
+            }
+            @page { margin: 0.5in; }
           }
         `}</style>
       </main>
@@ -402,9 +417,14 @@ export default function FCCDashboard() {
                 <p className="text-xs text-red-400 mt-1 font-semibold">{household.hazards}</p>
               )}
             </div>
-            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-[10px] font-extrabold text-black font-mono shrink-0">
-              QR
-            </div>
+            {qrDataUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={qrDataUrl} alt="QR" width={48} height={48} className="w-12 h-12 rounded-lg border border-slate-600 shrink-0" />
+            ) : (
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-[10px] font-extrabold text-black font-mono shrink-0">
+                QR
+              </div>
+            )}
           </div>
 
           <div className="flex gap-2 mt-3">
@@ -438,7 +458,7 @@ export default function FCCDashboard() {
               return (
                 <div key={m.id} className={`flex items-center justify-between py-2 ${i < members.length - 1 ? 'border-b border-slate-700' : ''}`}>
                   <div>
-                    <p className="text-sm font-semibold">{m.full_name}</p>
+                    <p className="text-sm font-semibold">{m.full_name} <span className="text-slate-500 font-normal text-xs">{calcAge(m.date_of_birth)}y</span></p>
                     <p className="text-xs text-slate-400 mt-0.5">
                       {flagCount} flag{flagCount !== 1 ? 's' : ''} · {medCount} med{medCount !== 1 ? 's' : ''}
                       {isDNR && <span className="text-red-400 ml-1.5 font-semibold">{CODE_STATUS_LABELS[m.code_status]}</span>}
