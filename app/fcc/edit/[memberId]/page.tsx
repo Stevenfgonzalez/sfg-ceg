@@ -458,7 +458,7 @@ export default function FCCMemberEditPage() {
             <div key={i} className="flex items-center justify-between py-1.5 border-b border-slate-700 last:border-0">
               <div>
                 <p className="text-sm font-semibold">{m.name} — {m.dose}</p>
-                <p className="text-xs text-slate-400">{m.freq}{m.last_dose ? ` · Last: ${m.last_dose}` : ''}</p>
+                <p className="text-xs text-slate-400">{m.freq}{m.last_dose ? ` · Location: ${m.last_dose}` : ''}</p>
               </div>
               <button onClick={() => setMeds(medications.filter((_, j) => j !== i))} className="text-red-400 text-xs ml-2">×</button>
             </div>
@@ -470,7 +470,7 @@ export default function FCCMemberEditPage() {
             </div>
             <div className="flex gap-2">
               <input value={newMed.freq} onChange={(e) => setNewMed({ ...newMed, freq: e.target.value })} placeholder="Freq (e.g. BID)" className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm placeholder:text-slate-500 focus:outline-none focus:border-amber-500" />
-              <input value={newMed.last_dose} onChange={(e) => setNewMed({ ...newMed, last_dose: e.target.value })} placeholder="Last dose" className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm placeholder:text-slate-500 focus:outline-none focus:border-amber-500" />
+              <input value={newMed.last_dose} onChange={(e) => setNewMed({ ...newMed, last_dose: e.target.value })} placeholder="Medication location" className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm placeholder:text-slate-500 focus:outline-none focus:border-amber-500" />
               <button
                 onClick={() => { if (newMed.name.trim()) { setMeds([...medications, { name: newMed.name.trim(), dose: newMed.dose.trim(), freq: newMed.freq.trim(), last_dose: newMed.last_dose.trim() }]); setNewMed({ name: '', dose: '', freq: '', last_dose: '' }); } }}
                 className="bg-blue-600 rounded-lg px-3 py-2 text-xs font-semibold active:bg-blue-700 shrink-0"
