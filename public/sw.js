@@ -2,7 +2,7 @@
 // Strategy: Cache-first for static assets, network-first for API routes
 // FCC data caching for offline EMS access
 
-const CACHE_NAME = 'ceg-v2';
+const CACHE_NAME = 'ceg-v3';
 const FCC_DATA_CACHE = 'fcc-data-v1';
 const FCC_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours (matches session TTL)
 
@@ -34,8 +34,8 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys
-          .filter((key) => key !== CACHE_NAME && key !== FCC_DATA_CACHE)
-          .map((key) => caches.delete(key))
+          .filter((k) => k !== CACHE_NAME && k !== FCC_DATA_CACHE)
+          .map((k) => caches.delete(k))
       );
     })
   );
@@ -117,7 +117,29 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets and pages — cache-first with network fallback
+  // Navigation requests (HTML pages) — network-first to respect auth redirects
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        // Only cache successful (non-redirect) navigation responses
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, clone);
+          });
+        }
+        return response;
+      }).catch(() => {
+        // Offline — try cache, then fall back to cached root
+        return caches.match(event.request).then((cached) => {
+          return cached || caches.match('/');
+        });
+      })
+    );
+    return;
+  }
+
+  // Static assets (JS, CSS, images) — cache-first with network fallback
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) {
@@ -146,10 +168,6 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       }).catch(() => {
-        // Offline and not cached — return offline fallback for navigation
-        if (event.request.mode === 'navigate') {
-          return caches.match('/');
-        }
         return new Response('Offline', { status: 503 });
       });
     })
