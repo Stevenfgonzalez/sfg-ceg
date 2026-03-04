@@ -11,6 +11,7 @@ interface AccessLog {
   expires_at: string;
   ip_address: string | null;
   user_agent: string | null;
+  revoked_at: string | null;
 }
 
 const METHOD_CONFIG: Record<string, { label: string; color: string }> = {
@@ -107,6 +108,7 @@ export default function FCCAccessLog() {
               const date = new Date(log.accessed_at);
               const expires = new Date(log.expires_at);
               const isExpired = expires.getTime() < Date.now();
+              const isRevoked = !!log.revoked_at;
               const config = METHOD_CONFIG[log.access_method] || { label: log.access_method, color: 'bg-slate-700 text-slate-300 border-slate-600' };
 
               return (
@@ -117,11 +119,13 @@ export default function FCCAccessLog() {
                         {config.label}
                       </span>
                       <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-                        isExpired
-                          ? 'bg-slate-700 text-slate-500'
-                          : 'bg-green-900/60 text-green-400 border border-green-800'
+                        isRevoked
+                          ? 'bg-red-900/60 text-red-400 border border-red-800'
+                          : isExpired
+                            ? 'bg-slate-700 text-slate-500'
+                            : 'bg-green-900/60 text-green-400 border border-green-800'
                       }`}>
-                        {isExpired ? 'Expired' : 'Active'}
+                        {isRevoked ? 'Revoked' : isExpired ? 'Expired' : 'Active'}
                       </span>
                     </div>
                     <span className="text-xs text-slate-500">{relativeTime(log.accessed_at)}</span>

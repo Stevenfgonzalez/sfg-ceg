@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { logEvent } from '@/lib/analytics';
 
-type Screen = 'loading' | 'not_found' | 'access' | 'code_entry' | 'viewing';
+type Screen = 'loading' | 'not_found' | 'access' | 'code_entry' | 'viewing' | 'expired';
 type AccessMethod = 'resident_code' | 'incident_number' | 'pcr_number';
 type FlagType = 'allergy' | 'med' | 'equipment' | 'safety';
 
@@ -180,6 +180,8 @@ export default function FccPublicEntry() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [activeMember, setActiveMember] = useState(0);
   const [expiresAt, setExpiresAt] = useState('');
+  const [sessionExpiresMs, setSessionExpiresMs] = useState<number | null>(null);
+  const [remaining, setRemaining] = useState<number | null>(null);
   const [showPush, setShowPush] = useState(false);
 
   // Fetch public household info on mount
@@ -254,6 +256,8 @@ export default function FccPublicEntry() {
 
       const exp = new Date(unlock.expires_at);
       setExpiresAt(exp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      setSessionExpiresMs(exp.getTime());
+      setRemaining(exp.getTime() - Date.now());
       setScreen('viewing');
       logEvent('fcc_ems_verified', { method: accessMethod, household: householdId });
     } catch {
@@ -262,6 +266,40 @@ export default function FccPublicEntry() {
       setVerifying(false);
     }
   }, [verifying, accessMethod, codeInput, householdId]);
+
+  // Countdown timer — ticks every second when session is active
+  useEffect(() => {
+    if (screen !== 'viewing' || !sessionExpiresMs) return;
+    const id = setInterval(() => {
+      const left = sessionExpiresMs - Date.now();
+      if (left <= 0) {
+        clearInterval(id);
+        setRemaining(0);
+        setScreen('expired');
+        logEvent('fcc_session_expired', { household: householdId });
+      } else {
+        setRemaining(left);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [screen, sessionExpiresMs, householdId]);
+
+  // Warn before closing tab while session is active
+  useEffect(() => {
+    if (screen !== 'viewing') return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [screen]);
+
+  function formatCountdown(ms: number): string {
+    const totalSec = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    if (h > 0) return `${h}h ${m.toString().padStart(2, '0')}m ${s.toString().padStart(2, '0')}s`;
+    return `${m}m ${s.toString().padStart(2, '0')}s`;
+  }
 
   // ── LOADING ──
   if (screen === 'loading') {
@@ -286,6 +324,45 @@ export default function FccPublicEntry() {
           <button onClick={exitToHome} className="mt-6 bg-slate-800 border border-slate-700 rounded-lg px-6 py-3 text-sm font-semibold active:bg-slate-700">
             Go to CEG Home
           </button>
+        </div>
+      </main>
+    );
+  }
+
+  // ── EXPIRED SCREEN ──
+  if (screen === 'expired') {
+    return (
+      <main className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
+        <div className="text-center px-6">
+          <div className="w-16 h-16 rounded-full bg-red-900/60 flex items-center justify-center mx-auto mb-4 text-3xl">
+            ⏰
+          </div>
+          <p className="font-bold text-xl">Session Expired</p>
+          <p className="text-sm text-slate-400 mt-2">Your 4-hour access window has ended.</p>
+          <p className="text-xs text-slate-500 mt-1">Patient data has been cleared from this device.</p>
+          <div className="flex gap-2 mt-6">
+            <button
+              onClick={() => {
+                setScreen('access');
+                setHouseholdData(null);
+                setMembers([]);
+                setContacts([]);
+                setCodeInput('');
+                setError('');
+                setSessionExpiresMs(null);
+                setRemaining(null);
+              }}
+              className="flex-1 bg-blue-600 rounded-lg px-4 py-3 text-sm font-bold active:bg-blue-700 transition-colors"
+            >
+              Request New Access
+            </button>
+            <button
+              onClick={exitToHome}
+              className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-sm font-semibold active:bg-slate-700 transition-colors"
+            >
+              Exit
+            </button>
+          </div>
         </div>
       </main>
     );
@@ -507,12 +584,23 @@ export default function FccPublicEntry() {
 
   return (
     <main className="min-h-screen bg-slate-900 text-white pb-8">
-      <div className="bg-gradient-to-r from-blue-800 to-blue-600 px-4 py-2.5 flex items-center justify-between">
+      <div className={`px-4 py-2.5 flex items-center justify-between transition-colors ${
+        remaining !== null && remaining <= 60_000
+          ? 'bg-gradient-to-r from-red-800 to-red-600'
+          : remaining !== null && remaining <= 300_000
+            ? 'bg-gradient-to-r from-amber-800 to-amber-600'
+            : 'bg-gradient-to-r from-blue-800 to-blue-600'
+      }`}>
         <div className="flex items-center gap-2">
           <span className="text-sm">🏥</span>
           <span className="text-xs font-bold tracking-wider font-mono">EMS ACCESS — READ ONLY</span>
         </div>
-        <span className="text-xs text-blue-200 font-mono">Expires {expiresAt}</span>
+        <span className={`text-xs font-mono font-bold ${
+          remaining !== null && remaining <= 60_000 ? 'text-red-200' :
+          remaining !== null && remaining <= 300_000 ? 'text-amber-200' : 'text-blue-200'
+        }`}>
+          {remaining !== null ? formatCountdown(remaining) : `Expires ${expiresAt}`}
+        </span>
       </div>
 
       {isDNR ? (

@@ -57,6 +57,8 @@ interface AccessLog {
   id: string;
   access_method: string;
   accessed_at: string;
+  expires_at: string | null;
+  revoked_at: string | null;
 }
 
 const CODE_STATUS_LABELS: Record<string, string> = {
@@ -128,7 +130,9 @@ export default function FCCDashboard() {
   const [household, setHousehold] = useState<Household | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastAccess, setLastAccess] = useState<AccessLog | null>(null);
+  const [accessLogs, setAccessLogs] = useState<AccessLog[]>([]);
   const [accessLogCount, setAccessLogCount] = useState(0);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState(false);
 
   useEffect(() => {
@@ -148,7 +152,8 @@ export default function FCCDashboard() {
         const hData = await hRes.json();
         const logData = await logRes.json();
         setHousehold(hData.household || null);
-        const logs = logData.logs || [];
+        const logs: AccessLog[] = logData.logs || [];
+        setAccessLogs(logs);
         setAccessLogCount(logs.length);
         if (logs.length > 0) setLastAccess(logs[0]);
       } catch {
@@ -167,6 +172,25 @@ export default function FCCDashboard() {
     router.push('/');
     router.refresh();
   };
+
+  const handleRevoke = useCallback(async (logId: string) => {
+    if (!confirm('Revoke this EMS session? The responder will lose access on their next page load.')) return;
+    setRevokingId(logId);
+    try {
+      const res = await fetch(`/api/fcc/access-logs/${logId}/revoke`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setAccessLogs(prev => prev.map(l =>
+          l.id === logId ? { ...l, revoked_at: data.revoked_at } : l
+        ));
+        logEvent('fcc_session_revoked', { logId });
+      }
+    } catch {
+      // Revoke failed silently
+    } finally {
+      setRevokingId(null);
+    }
+  }, []);
 
   const generateQR = useCallback(async () => {
     if (!household) return;
@@ -499,26 +523,46 @@ export default function FCCDashboard() {
         </div>
 
         {/* Access log */}
-        <a href="/fcc/log" className="block bg-slate-800 rounded-xl border border-slate-700 p-4 active:bg-slate-700 transition-colors">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-bold text-sm">Access Log</p>
-              {accessLogCount === 0 ? (
-                <p className="text-xs text-slate-500 italic mt-0.5">No emergency access events recorded</p>
-              ) : (
-                <div className="mt-0.5">
-                  <p className="text-xs text-slate-400">
-                    {accessLogCount} event{accessLogCount !== 1 ? 's' : ''}
-                    {lastAccess && (
-                      <span className="text-slate-500"> · Last: {relativeTime(lastAccess.accessed_at)}</span>
-                    )}
-                  </p>
-                </div>
-              )}
-            </div>
-            <span className="text-slate-500 text-sm">→</span>
+        <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="font-bold text-sm">Access Log</p>
+            <a href="/fcc/log" className="text-xs text-blue-400 font-semibold">View All →</a>
           </div>
-        </a>
+          {accessLogCount === 0 ? (
+            <p className="text-xs text-slate-500 italic">No emergency access events recorded</p>
+          ) : (
+            <div className="space-y-2">
+              {accessLogs.slice(0, 5).map((log) => {
+                const isExpired = log.expires_at ? new Date(log.expires_at).getTime() < Date.now() : true;
+                const isRevoked = !!log.revoked_at;
+                const isActive = !isRevoked && !isExpired;
+                return (
+                  <div key={log.id} className="flex items-center justify-between py-1.5 border-b border-slate-700 last:border-0">
+                    <div>
+                      <p className="text-xs">
+                        <span className="font-semibold">{log.access_method.replace(/_/g, ' ')}</span>
+                        <span className="text-slate-500 ml-1.5">{relativeTime(log.accessed_at)}</span>
+                      </p>
+                    </div>
+                    {isRevoked ? (
+                      <span className="text-[10px] font-bold text-red-400 bg-red-900/40 px-2 py-0.5 rounded font-mono">Revoked</span>
+                    ) : isExpired ? (
+                      <span className="text-[10px] font-bold text-slate-500 bg-slate-700/50 px-2 py-0.5 rounded font-mono">Expired</span>
+                    ) : isActive ? (
+                      <button
+                        onClick={() => handleRevoke(log.id)}
+                        disabled={revokingId === log.id}
+                        className="text-[10px] font-bold text-amber-400 bg-amber-900/40 px-2 py-0.5 rounded font-mono active:bg-amber-900/60 disabled:opacity-50"
+                      >
+                        {revokingId === log.id ? '...' : 'Revoke'}
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         {/* Emergency contacts summary */}
         {contacts.length > 0 && (
