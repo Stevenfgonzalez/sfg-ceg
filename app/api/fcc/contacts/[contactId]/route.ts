@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
 import { validateFccContactBody } from '@/lib/api-validation';
+import { getFccAuth } from '@/lib/fcc-auth';
 
-// PUT /api/fcc/contacts/[contactId] — update contact
+// PUT /api/fcc/contacts/[contactId] — update contact (owner or editor)
 export async function PUT(
   request: NextRequest,
   { params }: { params: { contactId: string } }
@@ -13,6 +14,11 @@ export async function PUT(
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  if (!auth) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   let body: Record<string, unknown>;
@@ -41,7 +47,7 @@ export async function PUT(
   return NextResponse.json({ contact: data });
 }
 
-// DELETE /api/fcc/contacts/[contactId] — remove contact
+// DELETE /api/fcc/contacts/[contactId] — remove contact (owner or editor)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { contactId: string } }
@@ -52,6 +58,11 @@ export async function DELETE(
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  if (!auth) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const { error } = await supabase

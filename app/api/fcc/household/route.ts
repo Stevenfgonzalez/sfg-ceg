@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
 import { log } from '@/lib/logger';
 import { validateFccHouseholdBody } from '@/lib/api-validation';
+import { getFccAuth } from '@/lib/fcc-auth';
 
-// GET /api/fcc/household — get owner's household
+// GET /api/fcc/household — get user's household (owner or caregiver)
 export async function GET(request: NextRequest) {
   const response = NextResponse.next();
   const supabase = createAuthMiddlewareClient(request, response);
@@ -13,10 +14,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const auth = await getFccAuth(supabase, user.id);
+  if (!auth) {
+    return NextResponse.json({ household: null });
+  }
+
   const { data, error } = await supabase
     .from('fcc_households')
     .select('*, fcc_members(*, fcc_member_clinical(*)), fcc_emergency_contacts(*)')
-    .eq('owner_id', user.id)
+    .eq('id', auth.household_id)
     .single();
 
   if (error && error.code !== 'PGRST116') {
@@ -24,10 +30,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to load household' }, { status: 500 });
   }
 
-  return NextResponse.json({ household: data || null });
+  return NextResponse.json({ household: data || null, role: auth.role });
 }
 
-// POST /api/fcc/household — create household
+// POST /api/fcc/household — create household (owner only)
 export async function POST(request: NextRequest) {
   const response = NextResponse.next();
   const supabase = createAuthMiddlewareClient(request, response);
@@ -67,7 +73,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ household: data }, { status: 201 });
 }
 
-// PUT /api/fcc/household — update household
+// PUT /api/fcc/household — update household (owner or editor)
 export async function PUT(request: NextRequest) {
   const response = NextResponse.next();
   const supabase = createAuthMiddlewareClient(request, response);
@@ -75,6 +81,11 @@ export async function PUT(request: NextRequest) {
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  if (!auth) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   let body: Record<string, unknown>;
@@ -92,7 +103,7 @@ export async function PUT(request: NextRequest) {
   const { data, error } = await supabase
     .from('fcc_households')
     .update(result.data)
-    .eq('owner_id', user.id)
+    .eq('id', auth.household_id)
     .select()
     .single();
 

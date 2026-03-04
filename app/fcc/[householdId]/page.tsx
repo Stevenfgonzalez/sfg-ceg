@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { logEvent } from '@/lib/analytics';
+import { isNfcSupported, startNfcScan } from '@/lib/nfc';
 
 type Screen = 'loading' | 'not_found' | 'access' | 'code_entry' | 'viewing' | 'expired';
 type AccessMethod = 'resident_code' | 'incident_number' | 'pcr_number' | 'temp_code';
@@ -37,6 +38,7 @@ interface Member {
   id: string;
   full_name: string;
   date_of_birth: string;
+  photo_url: string | null;
   baseline_mental: string | null;
   primary_language: string;
   code_status: string;
@@ -182,6 +184,54 @@ export default function FccPublicEntry() {
   const [expiresAt, setExpiresAt] = useState('');
   const [sessionExpiresMs, setSessionExpiresMs] = useState<number | null>(null);
   const [remaining, setRemaining] = useState<number | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
+  const [isOfflineData, setIsOfflineData] = useState(false);
+  const [nfcScanning, setNfcScanning] = useState(false);
+  const nfcAbortRef = useRef<AbortController | null>(null);
+
+  // Track online/offline status
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    setIsOffline(!navigator.onLine);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // NFC auto-scan on access screen — if tag with different household detected, navigate
+  useEffect(() => {
+    if (screen !== 'access' || !isNfcSupported()) return;
+
+    const controller = startNfcScan(
+      (url) => {
+        // Extract household ID from FCC URL
+        const match = url.match(/\/fcc\/([a-f0-9-]+)/i);
+        if (match && match[1] !== householdId) {
+          router.push(`/fcc/${match[1]}`);
+        }
+      },
+      () => {
+        // Scan error — silently ignore, NFC is optional
+      },
+    );
+
+    if (controller) {
+      nfcAbortRef.current = controller;
+      setNfcScanning(true);
+    }
+
+    return () => {
+      if (nfcAbortRef.current) {
+        nfcAbortRef.current.abort();
+        nfcAbortRef.current = null;
+      }
+      setNfcScanning(false);
+    };
+  }, [screen, householdId, router]);
 
   // Fetch public household info on mount
   useEffect(() => {
@@ -249,6 +299,11 @@ export default function FccPublicEntry() {
         return;
       }
 
+      // Detect if response came from service worker cache
+      if (res.headers.get('X-FCC-Offline') === 'true') {
+        setIsOfflineData(true);
+      }
+
       const unlock: UnlockResponse = data;
       setHouseholdData(unlock.household);
       setMembers(unlock.members);
@@ -277,6 +332,10 @@ export default function FccPublicEntry() {
         clearInterval(id);
         setRemaining(0);
         setScreen('expired');
+        // Clear FCC data cache on session expiry
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage('CLEAR_FCC_CACHE');
+        }
         logEvent('fcc_session_expired', { household: householdId });
       } else {
         setRemaining(left);
@@ -441,13 +500,19 @@ export default function FccPublicEntry() {
           </button>
         </div>
 
-        <div className="px-4 pb-8 text-center">
+        <div className="px-4 pb-8 text-center space-y-3">
           <button
             onClick={exitToHome}
             className="text-xs text-slate-500 font-mono border border-slate-700 rounded-lg px-4 py-2.5 active:bg-slate-800 transition-colors w-full"
           >
             Exit → CEG.SFG.AC
           </button>
+          {nfcScanning && (
+            <p className="text-[10px] text-slate-500 flex items-center justify-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              NFC scanning active
+            </p>
+          )}
         </div>
       </main>
     );
@@ -593,6 +658,15 @@ export default function FccPublicEntry() {
         </div>
       )}
 
+      {/* Offline banner */}
+      {(isOffline || isOfflineData) && (
+        <div className="bg-gradient-to-r from-amber-900 to-amber-800 px-4 py-2 text-center">
+          <p className="text-xs font-bold text-amber-200 tracking-wide">
+            {isOffline ? 'OFFLINE — Data may be stale' : 'CACHED DATA — Loaded from offline cache'}
+          </p>
+        </div>
+      )}
+
       {/* Member tabs */}
       <div role="tablist" aria-label="Household members" className="flex bg-gray-900 border-b border-slate-800 overflow-x-auto">
         {members.map((m, i) => (
@@ -616,13 +690,21 @@ export default function FccPublicEntry() {
       <div className="px-4">
         {/* Identification */}
         <SectionHeader icon="👤" title="Identification" color="text-blue-400" />
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        <div className="flex gap-3 items-start">
+          {member.photo_url && (
+            <div className="w-16 h-16 rounded-xl bg-slate-700 overflow-hidden shrink-0 border border-slate-600">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={member.photo_url} alt={member.full_name} className="w-full h-full object-cover" />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs flex-1">
           <p><span className="text-slate-400">Name:</span> <span className="font-semibold">{member.full_name}</span></p>
           <p><span className="text-slate-400">DOB:</span> <span className="font-semibold">{member.date_of_birth}</span> <span className="text-blue-400 font-bold">({calcAge(member.date_of_birth)} y/o)</span></p>
           {member.baseline_mental && (
             <p className="col-span-2"><span className="text-slate-400">Baseline:</span> <span className="font-semibold">{member.baseline_mental}</span></p>
           )}
           <p><span className="text-slate-400">Language:</span> <span className="font-semibold">{member.primary_language}</span></p>
+          </div>
         </div>
 
         {/* Critical Flags */}

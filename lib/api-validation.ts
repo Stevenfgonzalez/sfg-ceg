@@ -640,3 +640,59 @@ export function validateFccClinicalBody(body: Record<string, unknown>): Validati
 
   return { ok: true, data: result };
 }
+
+// ── FCC Caregiver Validator ──
+
+const VALID_CAREGIVER_ROLES = ['viewer', 'editor'] as const;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export interface FccCaregiverInviteInput {
+  email: string;
+  role: string;
+}
+
+export function validateFccCaregiverInvite(body: Record<string, unknown>): ValidationResult<FccCaregiverInviteInput> {
+  const email = safeTrimmedString(body.email, 254);
+  if (!email || !EMAIL_REGEX.test(email)) {
+    return { ok: false, error: { error: 'Valid email address required', status: 400 } };
+  }
+
+  const role = safeTrimmedString(body.role, 20);
+  if (!role || !VALID_CAREGIVER_ROLES.includes(role as typeof VALID_CAREGIVER_ROLES[number])) {
+    return { ok: false, error: { error: 'Role must be viewer or editor', status: 400 } };
+  }
+
+  return {
+    ok: true,
+    data: { email: email.toLowerCase(), role },
+  };
+}
+
+// ── FCC Agency Validator ──
+
+export interface FccAgencyInput {
+  name: string;
+  code: string;
+  contact_email: string | null;
+}
+
+export function validateFccAgencyBody(body: Record<string, unknown>): ValidationResult<FccAgencyInput> {
+  const name = safeTrimmedString(body.name, 200);
+  if (!name) {
+    return { ok: false, error: { error: 'Agency name is required', status: 400 } };
+  }
+
+  const code = safeTrimmedString(body.code, 50);
+  if (!code || code.length < 2) {
+    return { ok: false, error: { error: 'Agency code must be at least 2 characters', status: 400 } };
+  }
+
+  return {
+    ok: true,
+    data: {
+      name,
+      code: code.toUpperCase(),
+      contact_email: safeTrimmedString(body.contact_email, 254),
+    },
+  };
+}

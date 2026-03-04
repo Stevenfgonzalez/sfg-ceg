@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
 import { log } from '@/lib/logger';
 import { validateFccMemberBody } from '@/lib/api-validation';
+import { getFccAuth } from '@/lib/fcc-auth';
 
 // GET /api/fcc/members/[memberId] — single member with clinical data
 export async function GET(
@@ -16,10 +17,16 @@ export async function GET(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const auth = await getFccAuth(supabase, user.id);
+  if (!auth) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const { data: member, error } = await supabase
     .from('fcc_members')
     .select('*, fcc_member_clinical(*)')
     .eq('id', params.memberId)
+    .eq('household_id', auth.household_id)
     .single();
 
   if (error || !member) {
@@ -29,7 +36,7 @@ export async function GET(
   return NextResponse.json({ member });
 }
 
-// PUT /api/fcc/members/[memberId] — update member base fields
+// PUT /api/fcc/members/[memberId] — update member base fields (owner or editor)
 export async function PUT(
   request: NextRequest,
   { params }: { params: { memberId: string } }
@@ -40,6 +47,11 @@ export async function PUT(
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  if (!auth) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   let body: Record<string, unknown>;
@@ -58,6 +70,7 @@ export async function PUT(
     .from('fcc_members')
     .update(result.data)
     .eq('id', params.memberId)
+    .eq('household_id', auth.household_id)
     .select()
     .single();
 
@@ -69,7 +82,7 @@ export async function PUT(
   return NextResponse.json({ member: data });
 }
 
-// DELETE /api/fcc/members/[memberId] — remove member
+// DELETE /api/fcc/members/[memberId] — remove member (owner or editor)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { memberId: string } }
@@ -82,10 +95,16 @@ export async function DELETE(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  if (!auth) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const { error } = await supabase
     .from('fcc_members')
     .delete()
-    .eq('id', params.memberId);
+    .eq('id', params.memberId)
+    .eq('household_id', auth.household_id);
 
   if (error) {
     log({ level: 'error', event: 'fcc_member_delete_error', route: `/api/fcc/members/${params.memberId}`, error: error.message });

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
+import { getFccAuth } from '@/lib/fcc-auth';
 
-// GET /api/fcc/access-logs — owner's household access history
+// GET /api/fcc/access-logs — household access history (owner, editor, viewer)
 export async function GET(request: NextRequest) {
   const response = NextResponse.next();
   const supabase = createAuthMiddlewareClient(request, response);
@@ -11,21 +12,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Get owner's household first
-  const { data: household } = await supabase
-    .from('fcc_households')
-    .select('id')
-    .eq('owner_id', user.id)
-    .single();
-
-  if (!household) {
+  const auth = await getFccAuth(supabase, user.id);
+  if (!auth) {
     return NextResponse.json({ logs: [] });
   }
 
   const { data: logs, error } = await supabase
     .from('fcc_access_logs')
     .select('*')
-    .eq('household_id', household.id)
+    .eq('household_id', auth.household_id)
     .order('accessed_at', { ascending: false })
     .limit(50);
 

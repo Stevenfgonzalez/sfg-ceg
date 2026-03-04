@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
 import { log } from '@/lib/logger';
+import { getFccAuth } from '@/lib/fcc-auth';
 
-// POST /api/fcc/access-logs/[logId]/revoke — revoke an active EMS session
+// POST /api/fcc/access-logs/[logId]/revoke — revoke an active EMS session (owner or editor)
 export async function POST(
   request: NextRequest,
   { params }: { params: { logId: string } }
@@ -15,15 +16,9 @@ export async function POST(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Get owner's household
-  const { data: household } = await supabase
-    .from('fcc_households')
-    .select('id')
-    .eq('owner_id', user.id)
-    .single();
-
-  if (!household) {
-    return NextResponse.json({ error: 'No household found' }, { status: 404 });
+  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  if (!auth) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   // Fetch the access log entry
@@ -37,17 +32,15 @@ export async function POST(
     return NextResponse.json({ error: 'Access log not found' }, { status: 404 });
   }
 
-  // Verify ownership
-  if (logEntry.household_id !== household.id) {
+  // Verify household match
+  if (logEntry.household_id !== auth.household_id) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Check if already revoked
   if (logEntry.revoked_at) {
     return NextResponse.json({ error: 'Session already revoked' }, { status: 400 });
   }
 
-  // Revoke
   const now = new Date().toISOString();
   const { error: updateErr } = await supabase
     .from('fcc_access_logs')

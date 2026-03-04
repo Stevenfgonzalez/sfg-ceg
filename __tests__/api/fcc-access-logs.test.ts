@@ -25,6 +25,7 @@ function mockChain(data: unknown, error: { message: string } | null = null) {
   return {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
+    not: vi.fn().mockReturnThis(),
     single: vi.fn().mockResolvedValue({ data, error }),
     order: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue({ data: data ? (Array.isArray(data) ? data : [data]) : [], error }),

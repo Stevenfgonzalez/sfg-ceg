@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
 import { log } from '@/lib/logger';
 import { validateFccClinicalBody } from '@/lib/api-validation';
+import { getFccAuth } from '@/lib/fcc-auth';
 
-// PUT /api/fcc/members/[memberId]/clinical — update clinical data
+// PUT /api/fcc/members/[memberId]/clinical — update clinical data (owner or editor)
 export async function PUT(
   request: NextRequest,
   { params }: { params: { memberId: string } }
@@ -14,6 +15,11 @@ export async function PUT(
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  if (!auth) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   let body: Record<string, unknown>;

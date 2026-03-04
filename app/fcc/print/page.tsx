@@ -10,6 +10,7 @@ interface Member {
   id: string;
   full_name: string;
   date_of_birth: string;
+  photo_url?: string | null;
   baseline_mental: string | null;
   primary_language: string;
   code_status: string;
@@ -334,9 +335,15 @@ export default function FCCPrintPage() {
               const clinical = getClinical(member);
               return (
                 <div key={member.id} className={`border-t-2 border-black pt-3 mt-4 ${idx > 0 ? 'print:break-before-page' : ''}`} style={{ breakInside: 'avoid' }}>
-                  <p className="font-bold text-sm uppercase tracking-wide">
-                    {member.full_name} <span className="font-normal text-gray-500 ml-2">DOB: {member.date_of_birth} (Age {calcAge(member.date_of_birth)})</span>
-                  </p>
+                  <div className="flex items-center gap-3">
+                    {member.photo_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={member.photo_url} alt="" className="w-[60px] h-[60px] rounded-lg object-cover border border-gray-400 shrink-0" />
+                    )}
+                    <p className="font-bold text-sm uppercase tracking-wide">
+                      {member.full_name} <span className="font-normal text-gray-500 ml-2">DOB: {member.date_of_birth} (Age {calcAge(member.date_of_birth)})</span>
+                    </p>
+                  </div>
                   <div className="grid grid-cols-2 gap-x-4 mt-1">
                     <p>Code Status: <strong>{CODE_STATUS_LABELS[member.code_status] || member.code_status}</strong></p>
                     <p>Language: {member.primary_language}</p>

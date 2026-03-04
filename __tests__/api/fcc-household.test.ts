@@ -33,6 +33,7 @@ function mockChain(data: unknown, error: { message: string; code?: string } | nu
   return {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
+    not: vi.fn().mockReturnThis(),
     single: vi.fn().mockResolvedValue({ data, error }),
     insert: vi.fn().mockReturnThis(),
     update: vi.fn().mockReturnThis(),
@@ -93,7 +94,14 @@ describe('GET /api/fcc/household', () => {
 
   it('returns 500 on non-PGRST116 database error', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain(null, { message: 'Connection refused', code: 'ECONNREFUSED' }));
+    const callIndex = { value: 0 };
+    mockFrom.mockImplementation(() => {
+      callIndex.value++;
+      // First call: getFccAuth owner check (succeed)
+      if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
+      // Second call: the actual household fetch (fail with non-PGRST116)
+      return mockChain(null, { message: 'Connection refused', code: 'ECONNREFUSED' });
+    });
 
     const res = await GET(makeRequest('GET'));
     expect(res.status).toBe(500);
@@ -184,7 +192,14 @@ describe('PUT /api/fcc/household', () => {
 
   it('returns 500 on update error', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain(null, { message: 'update failed' }));
+    const callIndex = { value: 0 };
+    mockFrom.mockImplementation(() => {
+      callIndex.value++;
+      // First call: getFccAuth owner check (succeed)
+      if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
+      // Second call: the actual update (fail)
+      return mockChain(null, { message: 'update failed' });
+    });
 
     const res = await PUT(makeRequest('PUT', {
       name: 'Updated',

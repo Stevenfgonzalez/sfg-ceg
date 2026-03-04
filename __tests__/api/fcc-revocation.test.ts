@@ -42,16 +42,19 @@ describe('POST /api/fcc/access-logs/[logId]/revoke', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns 404 when no household', async () => {
+  it('returns 403 when no household (auth fails)', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     mockFrom.mockReturnValue({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
+      not: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({ data: null, error: null }),
     });
 
     const res = await revokeSession(makeRequest(), makeParams('log-1'));
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toMatch(/forbidden/i);
   });
 
   it('returns 404 when log not found', async () => {

@@ -67,6 +67,7 @@ describe('POST /api/fcc/[householdId]/request-code', () => {
     mockFrom.mockReturnValue({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
+      not: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({ data: null }),
     });
 

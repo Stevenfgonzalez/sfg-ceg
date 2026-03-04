@@ -40,7 +40,7 @@ const nextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'geolocation=(self), clipboard-write=(self), camera=(), microphone=()',
+            value: 'geolocation=(self), clipboard-write=(self), camera=(self), microphone=()',
           },
         ],
       },

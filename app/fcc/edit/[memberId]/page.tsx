@@ -24,6 +24,7 @@ interface Member {
   id: string;
   full_name: string;
   date_of_birth: string;
+  photo_url: string | null;
   baseline_mental: string | null;
   primary_language: string;
   code_status: string;
@@ -32,6 +33,31 @@ interface Member {
 }
 
 const FLAG_TYPES = ['allergy', 'med', 'equipment', 'safety'] as const;
+
+function resizeImage(file: File, maxSize: number, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxSize || height > maxSize) {
+        const ratio = Math.min(maxSize / width, maxSize / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Canvas toBlob failed'));
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = URL.createObjectURL(file);
+  });
+}
 
 export default function FCCMemberEditPage() {
   const params = useParams();
@@ -42,6 +68,10 @@ export default function FCCMemberEditPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  // Photo state
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
 
   // Member base fields
   const [full_name, setFullName] = useState('');
@@ -81,6 +111,7 @@ export default function FCCMemberEditPage() {
           return;
         }
         const m: Member = data.member;
+        setPhotoUrl(m.photo_url || null);
         setFullName(m.full_name);
         setDob(m.date_of_birth);
         setBaseline(m.baseline_mental || '');
@@ -155,6 +186,46 @@ export default function FCCMemberEditPage() {
     }
   }
 
+  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoUploading(true);
+    setError(null);
+    try {
+      const resized = await resizeImage(file, 400, 0.85);
+      const formData = new FormData();
+      formData.append('photo', resized, 'photo.jpg');
+      const res = await fetch(`/api/fcc/members/${memberId}/photo`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      setPhotoUrl(data.photo_url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Photo upload failed');
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
+
+  async function handlePhotoRemove() {
+    setPhotoUploading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/fcc/members/${memberId}/photo`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Remove failed');
+      }
+      setPhotoUrl(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Photo remove failed');
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
+
   if (loading) {
     return (
       <main className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
@@ -195,6 +266,47 @@ export default function FCCMemberEditPage() {
 
         {/* 1. Identification */}
         <Section title="Identification">
+          <div className="flex items-center gap-4 mb-3">
+            <div className="relative w-24 h-24 rounded-xl bg-slate-700 border border-slate-600 overflow-hidden shrink-0 flex items-center justify-center">
+              {photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={photoUrl} alt={full_name} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-3xl text-slate-500">👤</span>
+              )}
+              {photoUploading && (
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                  <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <input
+                type="file"
+                accept="image/jpeg,image/png"
+                onChange={handlePhotoUpload}
+                className="hidden"
+                id="photo-input"
+                disabled={photoUploading}
+              />
+              <label
+                htmlFor="photo-input"
+                className="block bg-blue-600 rounded-lg px-3 py-1.5 text-xs font-semibold text-center cursor-pointer active:bg-blue-700"
+              >
+                {photoUrl ? 'Change Photo' : 'Upload Photo'}
+              </label>
+              {photoUrl && (
+                <button
+                  onClick={handlePhotoRemove}
+                  disabled={photoUploading}
+                  className="block w-full bg-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-red-400 active:bg-slate-600 disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              )}
+              <p className="text-[10px] text-slate-500">JPEG/PNG, max 2MB</p>
+            </div>
+          </div>
           <Input label="Full Name" value={full_name} onChange={setFullName} />
           <Input label="Date of Birth" value={date_of_birth} onChange={setDob} type="date" />
           <Input label="Baseline Mental Status" value={baseline_mental} onChange={setBaseline} placeholder="e.g. A&O x4, mild hearing loss" />

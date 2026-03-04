@@ -4,6 +4,7 @@ import { createServiceClient } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { log } from '@/lib/logger';
 import { sendFccTempCodeSms } from '@/lib/alerting';
+import { getFccAuth } from '@/lib/fcc-auth';
 import { randomInt } from 'crypto';
 
 const TEMP_CODE_TTL_MINUTES = 30;
@@ -11,7 +12,7 @@ const TEMP_CODE_TTL_MINUTES = 30;
 /**
  * POST /api/fcc/[householdId]/request-code
  *
- * Owner requests a temporary 6-digit code sent via SMS.
+ * Owner or editor requests a temporary 6-digit code sent via SMS.
  * Rate limited to 3 codes per hour per household.
  *
  * Body: { phone }
@@ -28,12 +29,15 @@ export async function POST(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Verify ownership
+  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  if (!auth || auth.household_id !== params.householdId) {
+    return NextResponse.json({ error: 'Household not found' }, { status: 404 });
+  }
+
   const { data: household } = await supabase
     .from('fcc_households')
     .select('id, name')
     .eq('id', params.householdId)
-    .eq('owner_id', user.id)
     .single();
 
   if (!household) {

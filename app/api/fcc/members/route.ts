@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
 import { log } from '@/lib/logger';
 import { validateFccMemberBody } from '@/lib/api-validation';
+import { getFccAuth } from '@/lib/fcc-auth';
 
-// GET /api/fcc/members — list members in owner's household
+// GET /api/fcc/members — list members (owner, editor, viewer)
 export async function GET(request: NextRequest) {
   const response = NextResponse.next();
   const supabase = createAuthMiddlewareClient(request, response);
@@ -13,20 +14,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { data: household } = await supabase
-    .from('fcc_households')
-    .select('id')
-    .eq('owner_id', user.id)
-    .single();
-
-  if (!household) {
+  const auth = await getFccAuth(supabase, user.id);
+  if (!auth) {
     return NextResponse.json({ members: [] });
   }
 
   const { data: members, error } = await supabase
     .from('fcc_members')
     .select('*, fcc_member_clinical(*)')
-    .eq('household_id', household.id)
+    .eq('household_id', auth.household_id)
     .order('sort_order');
 
   if (error) {
@@ -36,7 +32,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ members: members || [] });
 }
 
-// POST /api/fcc/members — add member (max 6)
+// POST /api/fcc/members — add member (owner or editor, max 6)
 export async function POST(request: NextRequest) {
   const response = NextResponse.next();
   const supabase = createAuthMiddlewareClient(request, response);
@@ -46,10 +42,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  if (!auth) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const { data: household } = await supabase
     .from('fcc_households')
     .select('id, member_count')
-    .eq('owner_id', user.id)
+    .eq('id', auth.household_id)
     .single();
 
   if (!household) {
@@ -72,7 +73,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: result.error.error }, { status: result.error.status });
   }
 
-  // Insert member
   const { data: member, error: memberErr } = await supabase
     .from('fcc_members')
     .insert({
@@ -88,7 +88,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create member' }, { status: 500 });
   }
 
-  // Insert empty clinical record
   await supabase.from('fcc_member_clinical').insert({ member_id: member.id });
 
   log({ level: 'info', event: 'fcc_member_created', route: '/api/fcc/members' });

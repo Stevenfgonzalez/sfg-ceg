@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
 import { validateFccContactBody } from '@/lib/api-validation';
+import { getFccAuth } from '@/lib/fcc-auth';
 
-// GET /api/fcc/contacts — list emergency contacts
+// GET /api/fcc/contacts — list emergency contacts (owner, editor, viewer)
 export async function GET(request: NextRequest) {
   const response = NextResponse.next();
   const supabase = createAuthMiddlewareClient(request, response);
@@ -12,20 +13,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { data: household } = await supabase
-    .from('fcc_households')
-    .select('id')
-    .eq('owner_id', user.id)
-    .single();
-
-  if (!household) {
+  const auth = await getFccAuth(supabase, user.id);
+  if (!auth) {
     return NextResponse.json({ contacts: [] });
   }
 
   const { data, error } = await supabase
     .from('fcc_emergency_contacts')
     .select('*')
-    .eq('household_id', household.id)
+    .eq('household_id', auth.household_id)
     .order('sort_order');
 
   if (error) {
@@ -35,7 +31,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ contacts: data || [] });
 }
 
-// POST /api/fcc/contacts — add contact
+// POST /api/fcc/contacts — add contact (owner or editor)
 export async function POST(request: NextRequest) {
   const response = NextResponse.next();
   const supabase = createAuthMiddlewareClient(request, response);
@@ -45,14 +41,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { data: household } = await supabase
-    .from('fcc_households')
-    .select('id')
-    .eq('owner_id', user.id)
-    .single();
-
-  if (!household) {
-    return NextResponse.json({ error: 'No household found' }, { status: 404 });
+  const auth = await getFccAuth(supabase, user.id, ['owner', 'editor']);
+  if (!auth) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   let body: Record<string, unknown>;
@@ -70,7 +61,7 @@ export async function POST(request: NextRequest) {
   const { data, error } = await supabase
     .from('fcc_emergency_contacts')
     .insert({
-      household_id: household.id,
+      household_id: auth.household_id,
       ...result.data,
     })
     .select()

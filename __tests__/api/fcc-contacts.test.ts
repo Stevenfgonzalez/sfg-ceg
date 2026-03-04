@@ -30,6 +30,7 @@ function mockChain(data: unknown, error: { message: string } | null = null) {
   return {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
+    not: vi.fn().mockReturnThis(),
     single: vi.fn().mockResolvedValue({ data, error }),
     insert: vi.fn().mockReturnThis(),
     update: vi.fn().mockReturnThis(),
@@ -97,14 +98,14 @@ describe('POST /api/fcc/contacts', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns 404 when no household', async () => {
+  it('returns 403 when no household (auth fails)', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     mockFrom.mockReturnValue(mockChain(null));
 
     const res = await addContact(makeRequest('POST', '/api/fcc/contacts', { name: 'Test', relation: 'Friend', phone: '555-0000' }));
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
     const json = await res.json();
-    expect(json.error).toMatch(/no household/i);
+    expect(json.error).toMatch(/forbidden/i);
   });
 
   it('creates contact and returns 201', async () => {
@@ -172,7 +173,14 @@ describe('PUT /api/fcc/contacts/[contactId]', () => {
 
   it('returns 500 on update error', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue(mockChain(null, { message: 'error' }));
+    const callIndex = { value: 0 };
+    mockFrom.mockImplementation(() => {
+      callIndex.value++;
+      // First call: getFccAuth owner check (succeed)
+      if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
+      // Second call: the actual update (fail)
+      return mockChain(null, { message: 'error' });
+    });
 
     const res = await updateContact(
       makeRequest('PUT', '/api/fcc/contacts/c-1', { name: 'Test', relation: 'Friend', phone: '(602) 555-0000' }),
@@ -193,10 +201,17 @@ describe('DELETE /api/fcc/contacts/[contactId]', () => {
 
   it('deletes contact and returns success', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue({
-      delete: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      }),
+    const callIndex = { value: 0 };
+    mockFrom.mockImplementation(() => {
+      callIndex.value++;
+      // First call: getFccAuth owner check (succeed)
+      if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
+      // Second call: the actual delete
+      return {
+        delete: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ error: null }),
+        }),
+      };
     });
 
     const res = await deleteContact(makeRequest('DELETE', '/api/fcc/contacts/c-1'), makeParams('c-1'));
@@ -207,10 +222,17 @@ describe('DELETE /api/fcc/contacts/[contactId]', () => {
 
   it('returns 500 on delete error', async () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
-    mockFrom.mockReturnValue({
-      delete: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: { message: 'constraint error' } }),
-      }),
+    const callIndex = { value: 0 };
+    mockFrom.mockImplementation(() => {
+      callIndex.value++;
+      // First call: getFccAuth owner check (succeed)
+      if (callIndex.value === 1) return mockChain(MOCK_HOUSEHOLD);
+      // Second call: the actual delete (fail)
+      return {
+        delete: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ error: { message: 'constraint error' } }),
+        }),
+      };
     });
 
     const res = await deleteContact(makeRequest('DELETE', '/api/fcc/contacts/c-1'), makeParams('c-1'));

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { logEvent } from '@/lib/analytics';
 import { createAuthBrowserClient } from '@/lib/supabase-auth';
 import QRCode from 'qrcode';
+import { isNfcSupported, writeNfcTag } from '@/lib/nfc';
 
 interface Clinical {
   critical_flags?: { flag: string }[];
@@ -19,6 +20,7 @@ interface Member {
   id: string;
   full_name: string;
   date_of_birth: string;
+  photo_url?: string | null;
   code_status: string;
   baseline_mental?: string | null;
   directive_location?: string | null;
@@ -138,12 +140,27 @@ export default function FCCDashboard() {
   const [tempCodePhone, setTempCodePhone] = useState('');
   const [tempCodeSending, setTempCodeSending] = useState(false);
   const [tempCodeResult, setTempCodeResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [userRole, setUserRole] = useState<string>('owner');
+  const [caregivers, setCaregivers] = useState<{ id: string; email: string; role: string; accepted_at: string | null }[]>([]);
+  const [showCaregiverForm, setShowCaregiverForm] = useState(false);
+  const [caregiverEmail, setCaregiverEmail] = useState('');
+  const [caregiverRole, setCaregiverRole] = useState('viewer');
+  const [caregiverSending, setCaregiverSending] = useState(false);
+  const [caregiverError, setCaregiverError] = useState<string | null>(null);
+  const [pendingInvite, setPendingInvite] = useState(false);
+  const [nfcSupported, setNfcSupported] = useState(false);
+  const [nfcStatus, setNfcStatus] = useState<'idle' | 'waiting' | 'success' | 'error'>('idle');
+  const [nfcError, setNfcError] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createAuthBrowserClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setUserEmail(user.email ?? null);
     });
+  }, []);
+
+  useEffect(() => {
+    setNfcSupported(isNfcSupported());
   }, []);
 
   useEffect(() => {
@@ -156,10 +173,35 @@ export default function FCCDashboard() {
         const hData = await hRes.json();
         const logData = await logRes.json();
         setHousehold(hData.household || null);
+        if (hData.role) setUserRole(hData.role);
         const logs: AccessLog[] = logData.logs || [];
         setAccessLogs(logs);
         setAccessLogCount(logs.length);
         if (logs.length > 0) setLastAccess(logs[0]);
+        // Check for pending invite if no household
+        if (!hData.household) {
+          try {
+            const invRes = await fetch('/api/fcc/caregivers/accept', { method: 'POST' });
+            if (invRes.ok) {
+              setPendingInvite(false);
+              // Reload to get the household
+              window.location.reload();
+              return;
+            }
+          } catch {
+            // No pending invite
+          }
+        }
+        // Load caregivers if owner
+        if (hData.household && hData.role === 'owner') {
+          try {
+            const cgRes = await fetch('/api/fcc/caregivers');
+            const cgData = await cgRes.json();
+            setCaregivers(cgData.caregivers || []);
+          } catch {
+            // Caregiver load failed
+          }
+        }
       } catch {
         setFetchError(true);
       } finally {
@@ -239,6 +281,58 @@ export default function FCCDashboard() {
       generateQR();
     }
   }, [household, qrDataUrl, generateQR]);
+
+  const handleInviteCaregiver = useCallback(async () => {
+    if (!household || caregiverSending) return;
+    setCaregiverSending(true);
+    setCaregiverError(null);
+    try {
+      const res = await fetch('/api/fcc/caregivers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: caregiverEmail, role: caregiverRole }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to invite');
+      setCaregivers(prev => [...prev, data.caregiver]);
+      setCaregiverEmail('');
+      setShowCaregiverForm(false);
+    } catch (e) {
+      setCaregiverError(e instanceof Error ? e.message : 'Invite failed');
+    } finally {
+      setCaregiverSending(false);
+    }
+  }, [household, caregiverEmail, caregiverRole, caregiverSending]);
+
+  const handleRemoveCaregiver = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/fcc/caregivers/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setCaregivers(prev => prev.filter(c => c.id !== id));
+      }
+    } catch {
+      // Remove failed silently
+    }
+  }, []);
+
+  const handleNfcWrite = useCallback(async () => {
+    if (!household || nfcStatus === 'waiting') return;
+    setNfcStatus('waiting');
+    setNfcError(null);
+
+    const result = await writeNfcTag(`https://ceg.sfg.ac/fcc/${household.id}`);
+    if (result.success) {
+      setNfcStatus('success');
+      logEvent('fcc_nfc_write', { household: household.id });
+      setTimeout(() => setNfcStatus('idle'), 3000);
+    } else {
+      setNfcStatus('error');
+      setNfcError(result.error || 'Write failed');
+      setTimeout(() => setNfcStatus('idle'), 3000);
+    }
+  }, [household, nfcStatus]);
+
+  const isViewer = userRole === 'viewer';
 
   if (loading) {
     return (
@@ -437,6 +531,17 @@ export default function FCCDashboard() {
           )}
         </div>
 
+        {userRole !== 'owner' && (
+          <div className="bg-blue-900/40 border border-blue-700 rounded-lg px-4 py-3 text-center">
+            <p className="text-xs text-blue-300 font-semibold">
+              You are a <span className="uppercase font-bold">{userRole}</span> for this household
+            </p>
+            {isViewer && (
+              <p className="text-[10px] text-blue-400 mt-0.5">View-only access — contact the owner to make changes</p>
+            )}
+          </div>
+        )}
+
         {fetchError && (
           <div className="bg-red-900/50 border border-red-700 rounded-lg px-4 py-3 text-center">
             <p className="text-xs text-red-300">Failed to load data. Check your connection and refresh.</p>
@@ -516,12 +621,22 @@ export default function FCCDashboard() {
               const isDNR = m.code_status === 'dnr' || m.code_status === 'dnr_polst';
               return (
                 <div key={m.id} className={`flex items-center justify-between py-2 ${i < members.length - 1 ? 'border-b border-slate-700' : ''}`}>
-                  <div>
-                    <p className="text-sm font-semibold">{m.full_name} <span className="text-slate-500 font-normal text-xs">{calcAge(m.date_of_birth)}y</span></p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      {flagCount} flag{flagCount !== 1 ? 's' : ''} · {medCount} med{medCount !== 1 ? 's' : ''}
-                      {isDNR && <span className="text-red-400 ml-1.5 font-semibold">{CODE_STATUS_LABELS[m.code_status]}</span>}
-                    </p>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
+                      {m.photo_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={m.photo_url} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-sm text-slate-500">👤</span>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold">{m.full_name} <span className="text-slate-500 font-normal text-xs">{calcAge(m.date_of_birth)}y</span></p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {flagCount} flag{flagCount !== 1 ? 's' : ''} · {medCount} med{medCount !== 1 ? 's' : ''}
+                        {isDNR && <span className="text-red-400 ml-1.5 font-semibold">{CODE_STATUS_LABELS[m.code_status]}</span>}
+                      </p>
+                    </div>
                   </div>
                   <a href={`/fcc/edit/${m.id}`} className="text-xs text-blue-400 font-semibold shrink-0">Edit</a>
                 </div>
@@ -593,6 +708,107 @@ export default function FCCDashboard() {
             </div>
           )}
         </div>
+
+        {/* Caregivers (owner only) */}
+        {userRole === 'owner' && (
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-amber-500 uppercase tracking-wider font-mono">Caregivers</p>
+              <button
+                onClick={() => { setShowCaregiverForm(!showCaregiverForm); setCaregiverError(null); }}
+                className="text-xs text-blue-400 font-semibold"
+              >
+                {showCaregiverForm ? 'Cancel' : '+ Invite'}
+              </button>
+            </div>
+
+            {showCaregiverForm && (
+              <div className="space-y-2 mb-3 border-b border-slate-700 pb-3">
+                <input
+                  type="email"
+                  value={caregiverEmail}
+                  onChange={(e) => setCaregiverEmail(e.target.value)}
+                  placeholder="Email address"
+                  className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2.5 text-sm placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+                />
+                <div className="flex gap-2">
+                  <select
+                    value={caregiverRole}
+                    onChange={(e) => setCaregiverRole(e.target.value)}
+                    className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs"
+                  >
+                    <option value="viewer">Viewer (read-only)</option>
+                    <option value="editor">Editor (can modify)</option>
+                  </select>
+                  <button
+                    onClick={handleInviteCaregiver}
+                    disabled={!caregiverEmail.includes('@') || caregiverSending}
+                    className="bg-blue-600 rounded-lg px-4 py-2 text-xs font-bold active:bg-blue-700 disabled:opacity-50"
+                  >
+                    {caregiverSending ? '...' : 'Send'}
+                  </button>
+                </div>
+                {caregiverError && (
+                  <p className="text-xs text-red-400">{caregiverError}</p>
+                )}
+              </div>
+            )}
+
+            {caregivers.length === 0 ? (
+              <p className="text-xs text-slate-500 italic">No caregivers invited yet</p>
+            ) : (
+              <div className="space-y-1.5">
+                {caregivers.map((cg) => (
+                  <div key={cg.id} className="flex items-center justify-between py-1.5 border-b border-slate-700 last:border-0">
+                    <div>
+                      <p className="text-xs font-semibold">{cg.email}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        <span className="capitalize">{cg.role}</span>
+                        {cg.accepted_at ? (
+                          <span className="text-green-400 ml-1.5">Accepted</span>
+                        ) : (
+                          <span className="text-amber-400 ml-1.5">Pending</span>
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveCaregiver(cg.id)}
+                      className="text-xs text-red-400 font-semibold shrink-0 ml-2"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* NFC Tag Writing (only shown on supported devices) */}
+        {nfcSupported && (
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
+            <p className="text-xs font-bold text-amber-500 uppercase tracking-wider font-mono mb-2">NFC Tag</p>
+            <p className="text-xs text-slate-400 mb-3">Write your FCC URL to an NFC sticker for your door or fridge magnet</p>
+            <button
+              onClick={handleNfcWrite}
+              disabled={nfcStatus === 'waiting'}
+              className={`w-full rounded-lg px-4 py-3 text-sm font-bold transition-all ${
+                nfcStatus === 'success'
+                  ? 'bg-green-800 border border-green-600 text-green-200'
+                  : nfcStatus === 'waiting'
+                    ? 'bg-blue-900 border border-blue-600 text-blue-200 animate-pulse'
+                    : nfcStatus === 'error'
+                      ? 'bg-red-900 border border-red-700 text-red-300'
+                      : 'bg-slate-900 border border-slate-600 text-slate-300 active:bg-slate-800'
+              }`}
+            >
+              {nfcStatus === 'waiting' ? 'Hold phone to NFC tag...' :
+               nfcStatus === 'success' ? 'Tag Written!' :
+               nfcStatus === 'error' ? (nfcError || 'Write failed') :
+               'Write NFC Tag'}
+            </button>
+          </div>
+        )}
 
         {/* Access log */}
         <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
