@@ -204,10 +204,12 @@ export default function FCCMemberEditPage() {
         body: formData,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      if (!res.ok) throw new Error(`${res.status}: ${data.error || 'Upload failed'}`);
       setPhotoUrl(data.photo_url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Photo upload failed');
+      const msg = err instanceof Error ? err.message : 'Photo upload failed';
+      setError(msg);
+      alert(`Photo upload error: ${msg}`);
     } finally {
       setPhotoUploading(false);
     }
@@ -252,7 +254,7 @@ export default function FCCMemberEditPage() {
     ctx.drawImage(video, 0, 0);
     closeCamera();
     canvas.toBlob(async (blob) => {
-      if (!blob) return;
+      if (!blob) { alert('Camera: no blob captured'); return; }
       setPhotoUploading(true);
       setError(null);
       try {
@@ -265,10 +267,12 @@ export default function FCCMemberEditPage() {
           body: formData,
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Upload failed');
+        if (!res.ok) throw new Error(`${res.status}: ${data.error || 'Upload failed'}`);
         setPhotoUrl(data.photo_url);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Photo upload failed');
+        const msg = err instanceof Error ? err.message : 'Photo upload failed';
+        setError(msg);
+        alert(`Photo upload error: ${msg}`);
       } finally {
         setPhotoUploading(false);
       }
