@@ -381,3 +381,258 @@ export function validateCheckinUpdateBody(
 
   return { ok: true, data: result };
 }
+
+// ── FCC Validators ──
+
+const VALID_CODE_STATUSES = ['full_code', 'dnr', 'dnr_polst', 'comfort_care'] as const;
+const VALID_ACCESS_METHODS = ['resident_code', 'incident_number', 'pcr_number'] as const;
+const STATE_REGEX = /^[A-Z]{2}$/;
+const ZIP_REGEX = /^\d{5}(-\d{4})?$/;
+const DOB_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+export interface FccHouseholdInput {
+  name: string;
+  address_line1: string;
+  address_line2: string | null;
+  city: string;
+  state: string;
+  zip: string;
+  access_code?: string;
+  best_door: string | null;
+  gate_code: string | null;
+  animals: string | null;
+  stair_info: string | null;
+  hazards: string | null;
+  aed_onsite: boolean;
+  backup_power: string | null;
+}
+
+export function validateFccHouseholdBody(
+  body: Record<string, unknown>,
+  options: { isUpdate?: boolean } = {},
+): ValidationResult<FccHouseholdInput> {
+  const name = safeTrimmedString(body.name, 200);
+  if (!name) {
+    return { ok: false, error: { error: 'Household name is required', status: 400 } };
+  }
+
+  const address_line1 = safeTrimmedString(body.address_line1, 300);
+  if (!address_line1) {
+    return { ok: false, error: { error: 'Address is required', status: 400 } };
+  }
+
+  const city = safeTrimmedString(body.city, 100);
+  if (!city) {
+    return { ok: false, error: { error: 'City is required', status: 400 } };
+  }
+
+  const state = safeTrimmedString(body.state, 2);
+  if (!state || !STATE_REGEX.test(state)) {
+    return { ok: false, error: { error: 'State must be a 2-letter code (e.g. AZ)', status: 400 } };
+  }
+
+  const zip = safeTrimmedString(body.zip, 10);
+  if (!zip || !ZIP_REGEX.test(zip)) {
+    return { ok: false, error: { error: 'Valid ZIP code required (e.g. 85001 or 85001-1234)', status: 400 } };
+  }
+
+  const access_code = safeTrimmedString(body.access_code, 20);
+  if (!options.isUpdate && (!access_code || access_code.length < 4)) {
+    return { ok: false, error: { error: 'Access code must be 4-20 characters', status: 400 } };
+  }
+
+  return {
+    ok: true,
+    data: {
+      name,
+      address_line1,
+      address_line2: safeTrimmedString(body.address_line2, 300),
+      city,
+      state,
+      zip,
+      ...(access_code ? { access_code } : {}),
+      best_door: safeString(body.best_door, 500),
+      gate_code: safeString(body.gate_code, 500),
+      animals: safeString(body.animals, 500),
+      stair_info: safeString(body.stair_info, 500),
+      hazards: safeString(body.hazards, 500),
+      aed_onsite: body.aed_onsite === true,
+      backup_power: safeString(body.backup_power, 200),
+    },
+  };
+}
+
+export interface FccMemberInput {
+  full_name: string;
+  date_of_birth: string;
+  code_status: string;
+  primary_language: string;
+  baseline_mental: string | null;
+  directive_location: string | null;
+  sort_order: number;
+}
+
+export function validateFccMemberBody(body: Record<string, unknown>): ValidationResult<FccMemberInput> {
+  const full_name = safeTrimmedString(body.full_name, 200);
+  if (!full_name) {
+    return { ok: false, error: { error: 'Full name is required', status: 400 } };
+  }
+
+  const date_of_birth = safeTrimmedString(body.date_of_birth, 10);
+  if (!date_of_birth || !DOB_REGEX.test(date_of_birth)) {
+    return { ok: false, error: { error: 'Date of birth must be YYYY-MM-DD format', status: 400 } };
+  }
+
+  const dobDate = new Date(date_of_birth + 'T00:00:00');
+  if (isNaN(dobDate.getTime()) || dobDate > new Date()) {
+    return { ok: false, error: { error: 'Date of birth must be a valid past date', status: 400 } };
+  }
+
+  const rawCode = safeTrimmedString(body.code_status, 50);
+  const code_status = rawCode && VALID_CODE_STATUSES.includes(rawCode as typeof VALID_CODE_STATUSES[number])
+    ? rawCode
+    : 'full_code';
+
+  return {
+    ok: true,
+    data: {
+      full_name,
+      date_of_birth,
+      code_status,
+      primary_language: safeTrimmedString(body.primary_language, 100, 'English') as string,
+      baseline_mental: safeString(body.baseline_mental, 500),
+      directive_location: safeString(body.directive_location, 500),
+      sort_order: clampInt(body.sort_order, 0, 20, 0),
+    },
+  };
+}
+
+export interface FccContactInput {
+  name: string;
+  relation: string;
+  phone: string;
+  sort_order: number;
+}
+
+export function validateFccContactBody(body: Record<string, unknown>): ValidationResult<FccContactInput> {
+  const name = safeTrimmedString(body.name, 200);
+  if (!name) {
+    return { ok: false, error: { error: 'Contact name is required', status: 400 } };
+  }
+
+  const relation = safeTrimmedString(body.relation, 100);
+  if (!relation) {
+    return { ok: false, error: { error: 'Relation is required', status: 400 } };
+  }
+
+  if (!isValidPhone(body.phone)) {
+    return { ok: false, error: { error: 'Valid phone number required (10+ digits)', status: 400 } };
+  }
+
+  return {
+    ok: true,
+    data: {
+      name,
+      relation,
+      phone: body.phone as string,
+      sort_order: clampInt(body.sort_order, 0, 20, 0),
+    },
+  };
+}
+
+export interface FccUnlockInput {
+  access_method: string;
+  access_value: string;
+  agency_code: string | null;
+}
+
+export function validateFccUnlockBody(body: Record<string, unknown>): ValidationResult<FccUnlockInput> {
+  const access_method = safeTrimmedString(body.access_method, 50);
+  if (!access_method || !VALID_ACCESS_METHODS.includes(access_method as typeof VALID_ACCESS_METHODS[number])) {
+    return { ok: false, error: { error: 'Invalid access_method. Use resident_code, incident_number, or pcr_number', status: 400 } };
+  }
+
+  const access_value = safeTrimmedString(body.access_value, 100);
+  if (!access_value) {
+    return { ok: false, error: { error: 'Missing access_method or access_value', status: 400 } };
+  }
+
+  if (access_method === 'resident_code' && access_value.length < 4) {
+    return { ok: false, error: { error: 'Access code must be at least 4 characters', status: 400 } };
+  }
+
+  if (access_method !== 'resident_code' && access_value.length < 4) {
+    return { ok: false, error: { error: 'Invalid access value', status: 400 } };
+  }
+
+  return {
+    ok: true,
+    data: {
+      access_method,
+      access_value,
+      agency_code: safeString(body.agency_code, 100),
+    },
+  };
+}
+
+export interface FccClinicalInput {
+  critical_flags?: unknown[];
+  medications?: unknown[];
+  history?: string[];
+  mobility_status?: string | null;
+  lift_method?: string | null;
+  precautions?: string | null;
+  pain_notes?: string | null;
+  stair_chair_needed?: boolean;
+  equipment?: unknown[];
+  life_needs?: unknown[];
+}
+
+export function validateFccClinicalBody(body: Record<string, unknown>): ValidationResult<FccClinicalInput> {
+  const result: FccClinicalInput = {};
+
+  if (body.critical_flags !== undefined) {
+    if (!Array.isArray(body.critical_flags)) {
+      return { ok: false, error: { error: 'critical_flags must be an array', status: 400 } };
+    }
+    result.critical_flags = (body.critical_flags as unknown[]).slice(0, 50);
+  }
+
+  if (body.medications !== undefined) {
+    if (!Array.isArray(body.medications)) {
+      return { ok: false, error: { error: 'medications must be an array', status: 400 } };
+    }
+    result.medications = (body.medications as unknown[]).slice(0, 50);
+  }
+
+  if (body.history !== undefined) {
+    if (!Array.isArray(body.history)) {
+      return { ok: false, error: { error: 'history must be an array', status: 400 } };
+    }
+    result.history = (body.history as unknown[])
+      .filter((h): h is string => typeof h === 'string')
+      .slice(0, 100);
+  }
+
+  if (body.equipment !== undefined) {
+    if (!Array.isArray(body.equipment)) {
+      return { ok: false, error: { error: 'equipment must be an array', status: 400 } };
+    }
+    result.equipment = (body.equipment as unknown[]).slice(0, 50);
+  }
+
+  if (body.life_needs !== undefined) {
+    if (!Array.isArray(body.life_needs)) {
+      return { ok: false, error: { error: 'life_needs must be an array', status: 400 } };
+    }
+    result.life_needs = (body.life_needs as unknown[]).slice(0, 50);
+  }
+
+  if (body.mobility_status !== undefined) result.mobility_status = safeString(body.mobility_status, 500);
+  if (body.lift_method !== undefined) result.lift_method = safeString(body.lift_method, 500);
+  if (body.precautions !== undefined) result.precautions = safeString(body.precautions, 500);
+  if (body.pain_notes !== undefined) result.pain_notes = safeString(body.pain_notes, 500);
+  if (body.stair_chair_needed !== undefined) result.stair_chair_needed = body.stair_chair_needed === true;
+
+  return { ok: true, data: result };
+}

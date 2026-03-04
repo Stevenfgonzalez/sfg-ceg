@@ -217,6 +217,7 @@ describe('PUT /api/fcc/members/[memberId]', () => {
     const res = await updateMember(
       makeRequest('PUT', '/api/fcc/members/m-1', {
         full_name: 'Updated Name',
+        date_of_birth: '1948-03-15',
         owner_id: 'hacker',  // should be ignored
         household_id: 'hacker', // should be ignored
       }),
@@ -238,7 +239,10 @@ describe('PUT /api/fcc/members/[memberId]', () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     mockFrom.mockReturnValue(mockChain(null, { message: 'update failed' }));
 
-    const res = await updateMember(makeRequest('PUT', '/api/fcc/members/m-1', { full_name: 'X' }), makeParams('m-1'));
+    const res = await updateMember(
+      makeRequest('PUT', '/api/fcc/members/m-1', { full_name: 'Test', date_of_birth: '1950-01-01' }),
+      makeParams('m-1')
+    );
     expect(res.status).toBe(500);
   });
 });

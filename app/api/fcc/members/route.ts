@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
 import { log } from '@/lib/logger';
+import { validateFccMemberBody } from '@/lib/api-validation';
 
 // GET /api/fcc/members — list members in owner's household
 export async function GET(request: NextRequest) {
@@ -66,17 +67,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
+  const result = validateFccMemberBody(body);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error.error }, { status: result.error.status });
+  }
+
   // Insert member
   const { data: member, error: memberErr } = await supabase
     .from('fcc_members')
     .insert({
       household_id: household.id,
-      full_name: body.full_name,
-      date_of_birth: body.date_of_birth,
-      baseline_mental: body.baseline_mental || null,
-      primary_language: body.primary_language || 'English',
-      code_status: body.code_status || 'full_code',
-      directive_location: body.directive_location || null,
+      ...result.data,
       sort_order: household.member_count,
     })
     .select()

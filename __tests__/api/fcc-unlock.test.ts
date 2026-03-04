@@ -139,7 +139,7 @@ describe('POST /api/fcc/[householdId]/unlock', () => {
     );
     expect(res.status).toBe(400);
     const json = await res.json();
-    expect(json.error).toMatch(/missing/i);
+    expect(json.error).toMatch(/access_method/i);
   });
 
   it('returns 400 when access_value is missing', async () => {

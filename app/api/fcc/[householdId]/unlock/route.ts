@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { log } from '@/lib/logger';
 import { createHmac } from 'crypto';
+import { validateFccUnlockBody } from '@/lib/api-validation';
 
 const SESSION_TTL_HOURS = 4;
 
@@ -43,17 +44,12 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const accessMethod = body.access_method as string;
-  const accessValue = body.access_value as string;
-  const agencyCode = (body.agency_code as string) || null;
-
-  if (!accessMethod || !accessValue) {
-    return NextResponse.json({ error: 'Missing access_method or access_value' }, { status: 400 });
+  const result = validateFccUnlockBody(body);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error.error }, { status: result.error.status });
   }
 
-  if (!['resident_code', 'incident_number', 'pcr_number'].includes(accessMethod)) {
-    return NextResponse.json({ error: 'Invalid access_method' }, { status: 400 });
-  }
+  const { access_method: accessMethod, access_value: accessValue, agency_code: agencyCode } = result.data;
 
   const supabase = createServiceClient();
 

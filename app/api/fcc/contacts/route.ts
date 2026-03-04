@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
+import { validateFccContactBody } from '@/lib/api-validation';
 
 // GET /api/fcc/contacts — list emergency contacts
 export async function GET(request: NextRequest) {
@@ -61,14 +62,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
+  const result = validateFccContactBody(body);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error.error }, { status: result.error.status });
+  }
+
   const { data, error } = await supabase
     .from('fcc_emergency_contacts')
     .insert({
       household_id: household.id,
-      name: body.name,
-      relation: body.relation,
-      phone: body.phone,
-      sort_order: body.sort_order || 0,
+      ...result.data,
     })
     .select()
     .single();

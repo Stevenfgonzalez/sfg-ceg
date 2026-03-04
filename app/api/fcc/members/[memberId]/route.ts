@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
 import { log } from '@/lib/logger';
+import { validateFccMemberBody } from '@/lib/api-validation';
 
 // GET /api/fcc/members/[memberId] — single member with clinical data
 export async function GET(
@@ -48,16 +49,14 @@ export async function PUT(
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  // Only allow updating specific fields
-  const allowed = ['full_name', 'date_of_birth', 'baseline_mental', 'primary_language', 'code_status', 'directive_location', 'sort_order'];
-  const updates: Record<string, unknown> = {};
-  for (const key of allowed) {
-    if (key in body) updates[key] = body[key];
+  const result = validateFccMemberBody(body);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error.error }, { status: result.error.status });
   }
 
   const { data, error } = await supabase
     .from('fcc_members')
-    .update(updates)
+    .update(result.data)
     .eq('id', params.memberId)
     .select()
     .single();

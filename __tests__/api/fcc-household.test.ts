@@ -145,7 +145,14 @@ describe('POST /api/fcc/household', () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     mockFrom.mockReturnValue(mockChain(null, { message: 'unique constraint' }));
 
-    const res = await POST(makeRequest('POST', { name: 'Test' }));
+    const res = await POST(makeRequest('POST', {
+      name: 'Test',
+      address_line1: '123 Main St',
+      city: 'Phoenix',
+      state: 'AZ',
+      zip: '85001',
+      access_code: '4827',
+    }));
     expect(res.status).toBe(500);
   });
 });
@@ -163,7 +170,13 @@ describe('PUT /api/fcc/household', () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     mockFrom.mockReturnValue(mockChain({ ...MOCK_HOUSEHOLD, name: 'Updated' }));
 
-    const res = await PUT(makeRequest('PUT', { name: 'Updated' }));
+    const res = await PUT(makeRequest('PUT', {
+      name: 'Updated',
+      address_line1: '123 Main St',
+      city: 'Phoenix',
+      state: 'AZ',
+      zip: '85001',
+    }));
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.household.name).toBe('Updated');
@@ -173,7 +186,13 @@ describe('PUT /api/fcc/household', () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     mockFrom.mockReturnValue(mockChain(null, { message: 'update failed' }));
 
-    const res = await PUT(makeRequest('PUT', { name: 'Updated' }));
+    const res = await PUT(makeRequest('PUT', {
+      name: 'Updated',
+      address_line1: '123 Main St',
+      city: 'Phoenix',
+      state: 'AZ',
+      zip: '85001',
+    }));
     expect(res.status).toBe(500);
   });
 });

@@ -157,6 +157,8 @@ describe('PUT /api/fcc/contacts/[contactId]', () => {
     const res = await updateContact(
       makeRequest('PUT', '/api/fcc/contacts/c-1', {
         name: 'Updated Name',
+        relation: 'Daughter',
+        phone: '(602) 555-0142',
         household_id: 'hacker', // should be ignored
       }),
       makeParams('c-1')
@@ -172,7 +174,10 @@ describe('PUT /api/fcc/contacts/[contactId]', () => {
     mockGetUser.mockResolvedValue({ data: { user: MOCK_USER } });
     mockFrom.mockReturnValue(mockChain(null, { message: 'error' }));
 
-    const res = await updateContact(makeRequest('PUT', '/api/fcc/contacts/c-1', { name: 'X' }), makeParams('c-1'));
+    const res = await updateContact(
+      makeRequest('PUT', '/api/fcc/contacts/c-1', { name: 'Test', relation: 'Friend', phone: '(602) 555-0000' }),
+      makeParams('c-1')
+    );
     expect(res.status).toBe(500);
   });
 });
