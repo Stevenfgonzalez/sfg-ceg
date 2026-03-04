@@ -60,7 +60,7 @@ export default function CEGDashboard() {
             </div>
             <div>
               <h1 className="text-xl font-bold leading-tight">Community Emergency Guide</h1>
-              <p className="text-sm text-slate-400">Topanga &middot; Malibu &middot; Calabasas</p>
+              <p className="text-sm text-slate-400">Safety For Generations</p>
             </div>
           </div>
         </header>
