@@ -1,33 +1,100 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { logEvent } from '@/lib/analytics';
-import {
-  MOCK_HOUSEHOLD,
-  type FccMember,
-  type FccHousehold,
-  type FccCriticalFlag,
-  type FccMedication,
-  type FccEmergencyContact,
-  type FccFlagType,
-} from '../../data/mock-fcc-household';
 
-type Screen = 'access' | 'code_entry' | 'viewing';
+type Screen = 'loading' | 'not_found' | 'access' | 'code_entry' | 'viewing';
 type AccessMethod = 'resident_code' | 'incident_number' | 'pcr_number';
+type FlagType = 'allergy' | 'med' | 'equipment' | 'safety';
+
+interface PublicInfo {
+  id: string;
+  name: string;
+  address: string;
+  hazards: string | null;
+  member_count: number;
+}
+
+interface CriticalFlag { flag: string; type: FlagType }
+interface Medication { name: string; dose: string; freq: string; last_dose: string }
+interface Equipment { item: string; location: string }
+
+interface Clinical {
+  critical_flags: CriticalFlag[];
+  medications: Medication[];
+  history: string[];
+  mobility_status: string | null;
+  lift_method: string | null;
+  precautions: string | null;
+  pain_notes: string | null;
+  stair_chair_needed: boolean;
+  equipment: Equipment[];
+  life_needs: string[];
+}
+
+interface Member {
+  id: string;
+  full_name: string;
+  date_of_birth: string;
+  baseline_mental: string | null;
+  primary_language: string;
+  code_status: string;
+  directive_location: string | null;
+  fcc_member_clinical: Clinical | Clinical[];
+}
+
+interface HouseholdData {
+  id: string;
+  name: string;
+  address: string;
+  best_door: string | null;
+  gate_code: string | null;
+  animals: string | null;
+  stair_info: string | null;
+  hazards: string | null;
+  aed_onsite: boolean;
+  backup_power: string | null;
+}
+
+interface Contact {
+  id: string;
+  name: string;
+  relation: string;
+  phone: string;
+}
+
+interface UnlockResponse {
+  session_token: string;
+  expires_at: string;
+  household: HouseholdData;
+  members: Member[];
+  contacts: Contact[];
+}
+
+// Get clinical data from member (handles both object and array from Supabase)
+function getClinical(member: Member): Clinical {
+  const c = member.fcc_member_clinical;
+  if (Array.isArray(c)) return c[0] || emptyClinical();
+  return c || emptyClinical();
+}
+
+function emptyClinical(): Clinical {
+  return { critical_flags: [], medications: [], history: [], mobility_status: null, lift_method: null, precautions: null, pain_notes: null, stair_chair_needed: false, equipment: [], life_needs: [] };
+}
 
 // ── Inline sub-components ──
 
-const FLAG_COLORS: Record<FccFlagType, string> = {
+const FLAG_COLORS: Record<FlagType, string> = {
   allergy: 'bg-red-900/60 text-red-300 border-red-800',
   med: 'bg-amber-900/60 text-amber-200 border-amber-800',
   equipment: 'bg-blue-900/60 text-blue-300 border-blue-800',
   safety: 'bg-green-900/60 text-green-300 border-green-800',
 };
 
-function StatusBadge({ label, type }: { label: string; type: FccFlagType }) {
+function StatusBadge({ label, type }: { label: string; type: FlagType }) {
   return (
-    <span className={`inline-block px-2.5 py-1 rounded text-xs font-semibold border tracking-wide ${FLAG_COLORS[type]}`}>
+    <span className={`inline-block px-2.5 py-1 rounded text-xs font-semibold border tracking-wide ${FLAG_COLORS[type] || FLAG_COLORS.safety}`}>
       {label}
     </span>
   );
@@ -49,21 +116,21 @@ function SectionHeader({ icon, title, color }: { icon: string; title: string; co
   );
 }
 
-function MedRow({ med, isLast }: { med: FccMedication; isLast: boolean }) {
+function MedRow({ med, isLast }: { med: Medication; isLast: boolean }) {
   return (
     <div className={`flex items-center justify-between py-2 ${isLast ? '' : 'border-b border-slate-700'}`}>
       <div>
         <span className="font-bold text-sm">{med.name}</span>
         <span className="text-xs text-slate-400 ml-1.5">{med.dose} — {med.freq}</span>
       </div>
-      {med.lastDose && (
-        <span className="text-xs text-green-400 font-mono shrink-0 ml-2">{med.lastDose}</span>
+      {med.last_dose && (
+        <span className="text-xs text-green-400 font-mono shrink-0 ml-2">{med.last_dose}</span>
       )}
     </div>
   );
 }
 
-function ContactRow({ contact, isLast }: { contact: FccEmergencyContact; isLast: boolean }) {
+function ContactRow({ contact, isLast }: { contact: Contact; isLast: boolean }) {
   return (
     <div className={`flex items-center justify-between py-2 ${isLast ? '' : 'border-b border-slate-700'}`}>
       <div>
@@ -80,6 +147,12 @@ function ContactRow({ contact, isLast }: { contact: FccEmergencyContact; isLast:
   );
 }
 
+const CODE_STATUS_LABELS: Record<string, string> = {
+  full_code: 'Full Code',
+  dnr: 'DNR',
+  dnr_polst: 'DNR/POLST',
+};
+
 // ── Main page ──
 
 export default function FccPublicEntry() {
@@ -87,18 +160,37 @@ export default function FccPublicEntry() {
   const params = useParams();
   const householdId = params.householdId as string;
 
-  const [screen, setScreen] = useState<Screen>('access');
+  const [screen, setScreen] = useState<Screen>('loading');
   const [accessMethod, setAccessMethod] = useState<AccessMethod | null>(null);
   const [codeInput, setCodeInput] = useState('');
   const [error, setError] = useState('');
   const [verifying, setVerifying] = useState(false);
-  const [household, setHousehold] = useState<FccHousehold | null>(null);
+  const [publicInfo, setPublicInfo] = useState<PublicInfo | null>(null);
+  const [householdData, setHouseholdData] = useState<HouseholdData | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [activeMember, setActiveMember] = useState(0);
   const [expiresAt, setExpiresAt] = useState('');
   const [showPush, setShowPush] = useState(false);
 
-  // TODO: Fetch household public info from /api/fcc/[householdId]/info
-  const publicInfo = MOCK_HOUSEHOLD;
+  // Fetch public household info on mount
+  useEffect(() => {
+    async function fetchInfo() {
+      try {
+        const res = await fetch(`/api/fcc/${householdId}/info`);
+        if (!res.ok) {
+          setScreen('not_found');
+          return;
+        }
+        const data: PublicInfo = await res.json();
+        setPublicInfo(data);
+        setScreen('access');
+      } catch {
+        setScreen('not_found');
+      }
+    }
+    fetchInfo();
+  }, [householdId]);
 
   const exitToHome = useCallback(() => {
     logEvent('fcc_ems_exit');
@@ -113,57 +205,102 @@ export default function FccPublicEntry() {
     logEvent('fcc_ems_method', { method });
   }, []);
 
-  const handleVerify = useCallback(() => {
-    if (verifying) return;
+  const handleVerify = useCallback(async () => {
+    if (verifying || !accessMethod) return;
     setError('');
     setVerifying(true);
 
-    // TODO: Replace with POST /api/fcc/[householdId]/unlock
-    setTimeout(() => {
-      let valid = false;
-      if (accessMethod === 'resident_code') {
-        valid = codeInput === '4827';
-      } else {
-        valid = codeInput.length >= 4;
+    try {
+      const res = await fetch(`/api/fcc/${householdId}/unlock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          access_method: accessMethod,
+          access_value: codeInput,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 429) {
+          setError('Too many attempts. Wait 60 seconds.');
+        } else if (res.status === 401) {
+          setError(
+            accessMethod === 'resident_code'
+              ? 'Invalid code. Request code from resident or use Incident/PCR number.'
+              : 'Could not verify. Try another access method or contact dispatch.'
+          );
+        } else {
+          setError(data.error || 'Verification failed');
+        }
+        return;
       }
 
-      if (valid) {
-        setHousehold(MOCK_HOUSEHOLD);
-        setActiveMember(0);
-        const exp = new Date(Date.now() + 4 * 60 * 60 * 1000);
-        setExpiresAt(exp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-        setScreen('viewing');
-        logEvent('fcc_ems_verified', { method: accessMethod, household: householdId });
-      } else {
-        setError(
-          accessMethod === 'resident_code'
-            ? 'Invalid code. Request code from resident or use Incident/PCR number.'
-            : 'Could not verify. Try another access method or contact dispatch.'
-        );
-      }
+      const unlock: UnlockResponse = data;
+      setHouseholdData(unlock.household);
+      setMembers(unlock.members);
+      setContacts(unlock.contacts);
+      setActiveMember(0);
+
+      const exp = new Date(unlock.expires_at);
+      setExpiresAt(exp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      setScreen('viewing');
+      logEvent('fcc_ems_verified', { method: accessMethod, household: householdId });
+    } catch {
+      setError('Network error. Check your connection.');
+    } finally {
       setVerifying(false);
-    }, 1200);
+    }
   }, [verifying, accessMethod, codeInput, householdId]);
 
+  // ── LOADING ──
+  if (screen === 'loading') {
+    return (
+      <main className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-400">Loading care card...</p>
+        </div>
+      </main>
+    );
+  }
+
+  // ── NOT FOUND ──
+  if (screen === 'not_found') {
+    return (
+      <main className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
+        <div className="text-center px-6">
+          <p className="text-4xl mb-3">🏥</p>
+          <p className="font-bold text-lg">Care Card Not Found</p>
+          <p className="text-sm text-slate-400 mt-2">This household ID does not exist or has been removed.</p>
+          <button onClick={exitToHome} className="mt-6 bg-slate-800 border border-slate-700 rounded-lg px-6 py-3 text-sm font-semibold active:bg-slate-700">
+            Go to CEG Home
+          </button>
+        </div>
+      </main>
+    );
+  }
+
   // ── ACCESS SCREEN ──
-  if (screen === 'access') {
+  if (screen === 'access' && publicInfo) {
     return (
       <main className="min-h-screen bg-slate-900 text-white">
         <div className="text-center px-4 pt-8 pb-4">
           <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-800 to-blue-600 flex items-center justify-center mx-auto mb-3 text-3xl">
             🏥
           </div>
-          <p className="text-xs font-bold tracking-widest text-slate-400 font-mono">CEG.SFG.AC/FCC/{householdId}</p>
-          <p className="text-xs font-bold tracking-widest text-blue-400 uppercase mt-1.5 font-mono">SFG Field Care Card</p>
-          <p className="text-base font-bold mt-1.5">Delgado Household</p>
-          <p className="text-xs text-slate-400 mt-0.5">{publicInfo.address.split(',').slice(0, -1).join(',')}</p>
-          <p className="text-xs text-slate-400">{publicInfo.members.length} registered members</p>
+          <p className="text-xs font-bold tracking-widest text-slate-400 font-mono">SFG FIELD CARE CARD</p>
+          <p className="text-xs font-bold tracking-widest text-blue-400 uppercase mt-1.5 font-mono">EMS Access Portal</p>
+          <p className="text-base font-bold mt-1.5">{publicInfo.name}</p>
+          <p className="text-xs text-slate-400 mt-0.5">{publicInfo.address}</p>
+          <p className="text-xs text-slate-400">{publicInfo.member_count} registered member{publicInfo.member_count !== 1 ? 's' : ''}</p>
         </div>
 
-        {publicInfo.access.hazards && (
+        {publicInfo.hazards && (
           <div className="mx-4 mb-4 bg-gradient-to-r from-red-950 to-red-900 rounded-lg px-3 py-2 flex items-center gap-2 justify-center">
             <span className="text-sm">⚠️</span>
-            <span className="text-xs font-bold text-red-300">{publicInfo.access.hazards}</span>
+            <span className="text-xs font-bold text-red-300">{publicInfo.hazards}</span>
           </div>
         )}
 
@@ -233,11 +370,7 @@ export default function FccPublicEntry() {
                   <div>
                     <p className="text-xs font-bold">Emergency Access Requested</p>
                     <p className="text-xs text-slate-400 mt-0.5">Someone scanned your Field Care Card QR</p>
-                    <div className="mt-2 bg-gray-900 rounded-md border border-green-700 px-3.5 py-2 inline-block">
-                      <p className="text-[10px] text-green-400 font-semibold">TEMPORARY CODE</p>
-                      <p className="text-xl font-extrabold tracking-[0.3em] font-mono">7741</p>
-                      <p className="text-[9px] text-slate-400">Expires in 4 hours</p>
-                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">The resident will receive a notification with a temporary code.</p>
                   </div>
                 </div>
                 <button onClick={() => setShowPush(false)} className="text-slate-400 text-base leading-none active:text-slate-300">×</button>
@@ -261,9 +394,9 @@ export default function FccPublicEntry() {
   // ── CODE ENTRY SCREEN ──
   if (screen === 'code_entry') {
     const methodConfig: Record<AccessMethod, { icon: string; label: string; desc: string; placeholder: string; maxLen: number; isBig: boolean }> = {
-      resident_code: { icon: '🔑', label: 'Resident Code', desc: 'Code provided by resident or dispatch', placeholder: '• • • •', maxLen: 4, isBig: true },
-      incident_number: { icon: '📋', label: 'Incident Number', desc: 'From your CAD dispatch sheet', placeholder: 'INC-2026-', maxLen: 14, isBig: false },
-      pcr_number: { icon: '📄', label: 'PCR Number', desc: 'Patient Care Report number', placeholder: 'PCR-', maxLen: 14, isBig: false },
+      resident_code: { icon: '🔑', label: 'Resident Code', desc: 'Code provided by resident or dispatch', placeholder: '• • • •', maxLen: 10, isBig: true },
+      incident_number: { icon: '📋', label: 'Incident Number', desc: 'From your CAD dispatch sheet', placeholder: 'INC-2026-', maxLen: 20, isBig: false },
+      pcr_number: { icon: '📄', label: 'PCR Number', desc: 'Patient Care Report number', placeholder: 'PCR-', maxLen: 20, isBig: false },
     };
 
     const method = accessMethod!;
@@ -326,10 +459,6 @@ export default function FccPublicEntry() {
             <p className="text-xs text-slate-500 text-center mt-3 italic">
               Access expires in 4 hours · All access is logged
             </p>
-
-            {method === 'resident_code' && (
-              <p className="text-xs text-slate-600 text-center mt-1.5">Demo code: 4827</p>
-            )}
           </div>
         </div>
 
@@ -346,10 +475,11 @@ export default function FccPublicEntry() {
   }
 
   // ── VIEWING SCREEN (EMS read-only care card) ──
-  if (!household) return null;
+  if (screen !== 'viewing' || !householdData || members.length === 0) return null;
 
-  const member: FccMember = household.members[activeMember];
-  const isDNR = member.codeStatus.includes('DNR');
+  const member = members[activeMember];
+  const clinical = getClinical(member);
+  const isDNR = member.code_status === 'dnr' || member.code_status === 'dnr_polst';
 
   return (
     <main className="min-h-screen bg-slate-900 text-white pb-8">
@@ -363,8 +493,10 @@ export default function FccPublicEntry() {
 
       {isDNR ? (
         <div className="bg-gradient-to-r from-red-950 to-red-900 px-4 py-2.5 text-center">
-          <p className="text-sm font-extrabold tracking-wider font-mono">⚠ DNR / POLST ON FILE</p>
-          <p className="text-xs text-red-300 mt-0.5">{member.directiveLocation}</p>
+          <p className="text-sm font-extrabold tracking-wider font-mono">⚠ {CODE_STATUS_LABELS[member.code_status] || 'DNR'} ON FILE</p>
+          {member.directive_location && (
+            <p className="text-xs text-red-300 mt-0.5">{member.directive_location}</p>
+          )}
         </div>
       ) : (
         <div className="bg-gradient-to-r from-green-900 to-green-800 px-4 py-2.5 text-center">
@@ -372,82 +504,107 @@ export default function FccPublicEntry() {
         </div>
       )}
 
-      <div className="flex bg-gray-900 border-b border-slate-800">
-        {household.members.map((m: FccMember, i: number) => (
+      {/* Member tabs */}
+      <div className="flex bg-gray-900 border-b border-slate-800 overflow-x-auto">
+        {members.map((m, i) => (
           <button
             key={m.id}
             onClick={() => setActiveMember(i)}
-            className={`flex-1 py-2.5 text-xs font-semibold transition-colors ${
+            className={`flex-1 py-2.5 text-xs font-semibold transition-colors whitespace-nowrap px-3 ${
               i === activeMember
                 ? 'bg-slate-800 border-b-2 border-amber-500 text-white'
                 : 'text-slate-400'
             }`}
           >
-            {m.name.split(' ')[0]}
+            {m.full_name.split(' ')[0]}
           </button>
         ))}
       </div>
 
       <div className="px-4">
+        {/* Identification */}
         <SectionHeader icon="👤" title="Identification" color="text-blue-400" />
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-          <p><span className="text-slate-400">Name:</span> <span className="font-semibold">{member.name}</span></p>
-          <p><span className="text-slate-400">DOB:</span> <span className="font-semibold">{member.dob}</span></p>
-          <p className="col-span-2"><span className="text-slate-400">Baseline:</span> <span className="font-semibold">{member.baseline}</span></p>
-          <p><span className="text-slate-400">Language:</span> <span className="font-semibold">{member.language}</span></p>
+          <p><span className="text-slate-400">Name:</span> <span className="font-semibold">{member.full_name}</span></p>
+          <p><span className="text-slate-400">DOB:</span> <span className="font-semibold">{member.date_of_birth}</span></p>
+          {member.baseline_mental && (
+            <p className="col-span-2"><span className="text-slate-400">Baseline:</span> <span className="font-semibold">{member.baseline_mental}</span></p>
+          )}
+          <p><span className="text-slate-400">Language:</span> <span className="font-semibold">{member.primary_language}</span></p>
         </div>
 
-        {member.criticalFlags.length > 0 && (
+        {/* Critical Flags */}
+        {clinical.critical_flags.length > 0 && (
           <>
             <SectionHeader icon="🚨" title="Critical Flags" color="text-red-400" />
             <div className="bg-gradient-to-br from-red-950/60 to-red-950/30 border border-red-800 rounded-lg p-3">
               <div className="flex flex-wrap gap-1.5">
-                {member.criticalFlags.map((flag: FccCriticalFlag) => (
-                  <StatusBadge key={flag.flag} label={flag.flag} type={flag.type} />
+                {clinical.critical_flags.map((flag) => (
+                  <StatusBadge key={flag.flag} label={flag.flag} type={flag.type as FlagType} />
                 ))}
               </div>
             </div>
           </>
         )}
 
-        <SectionHeader icon="💊" title="Current Medications" color="text-amber-500" />
-        <div className="bg-gray-900 rounded-lg border border-slate-800 overflow-hidden">
-          <div className="px-3">
-            {member.medications.map((med: FccMedication, i: number) => (
-              <MedRow key={med.name} med={med} isLast={i === member.medications.length - 1} />
-            ))}
-          </div>
-        </div>
+        {/* Medications */}
+        {clinical.medications.length > 0 && (
+          <>
+            <SectionHeader icon="💊" title="Current Medications" color="text-amber-500" />
+            <div className="bg-gray-900 rounded-lg border border-slate-800 overflow-hidden">
+              <div className="px-3">
+                {clinical.medications.map((med, i) => (
+                  <MedRow key={`${med.name}-${i}`} med={med} isLast={i === clinical.medications.length - 1} />
+                ))}
+              </div>
+            </div>
+          </>
+        )}
 
-        <SectionHeader icon="📋" title="Relevant History" color="text-violet-400" />
-        <div className="flex flex-wrap gap-1.5">
-          {member.history.map((h: string) => (
-            <HistoryBadge key={h} label={h} />
-          ))}
-        </div>
+        {/* History */}
+        {clinical.history.length > 0 && (
+          <>
+            <SectionHeader icon="📋" title="Relevant History" color="text-violet-400" />
+            <div className="flex flex-wrap gap-1.5">
+              {clinical.history.map((h) => (
+                <HistoryBadge key={h} label={h} />
+              ))}
+            </div>
+          </>
+        )}
 
-        <SectionHeader icon="🚶" title="Mobility &amp; Movement Plan" color="text-green-400" />
-        <div className="bg-gray-900 rounded-lg border border-slate-800 p-3 text-xs space-y-1.5">
-          <p><span className="text-green-400 font-bold">Status:</span> {member.mobility.status}</p>
-          <p><span className="text-green-400 font-bold">Lift:</span> {member.mobility.liftMethod}</p>
-          {member.mobility.precautions !== 'None' && (
-            <p><span className="text-amber-400 font-bold">Precaution:</span> {member.mobility.precautions}</p>
-          )}
-          {member.mobility.pain !== 'None' && (
-            <p><span className="text-slate-400 font-bold">Pain:</span> {member.mobility.pain}</p>
-          )}
-          {member.mobility.stairChair.startsWith('Yes') && (
-            <p><span className="text-red-400 font-bold">⚠ Stair chair required:</span> {household.access.stairInfo}</p>
-          )}
-        </div>
+        {/* Mobility */}
+        {(clinical.mobility_status || clinical.lift_method) && (
+          <>
+            <SectionHeader icon="🚶" title="Mobility &amp; Movement Plan" color="text-green-400" />
+            <div className="bg-gray-900 rounded-lg border border-slate-800 p-3 text-xs space-y-1.5">
+              {clinical.mobility_status && (
+                <p><span className="text-green-400 font-bold">Status:</span> {clinical.mobility_status}</p>
+              )}
+              {clinical.lift_method && (
+                <p><span className="text-green-400 font-bold">Lift:</span> {clinical.lift_method}</p>
+              )}
+              {clinical.precautions && (
+                <p><span className="text-amber-400 font-bold">Precaution:</span> {clinical.precautions}</p>
+              )}
+              {clinical.pain_notes && (
+                <p><span className="text-slate-400 font-bold">Pain:</span> {clinical.pain_notes}</p>
+              )}
+              {clinical.stair_chair_needed && householdData.stair_info && (
+                <p><span className="text-red-400 font-bold">⚠ Stair chair required:</span> {householdData.stair_info}</p>
+              )}
+            </div>
+          </>
+        )}
 
-        {member.equipment.length > 0 && (
+        {/* Equipment */}
+        {clinical.equipment.length > 0 && (
           <>
             <SectionHeader icon="🔧" title="Equipment &amp; Life Support" color="text-pink-400" />
             <div className="bg-gray-900 rounded-lg border border-slate-800 overflow-hidden">
               <div className="px-3">
-                {member.equipment.map((eq, i) => (
-                  <div key={eq.item} className={`flex justify-between py-2 text-xs ${i < member.equipment.length - 1 ? 'border-b border-slate-800' : ''}`}>
+                {clinical.equipment.map((eq, i) => (
+                  <div key={`${eq.item}-${i}`} className={`flex justify-between py-2 text-xs ${i < clinical.equipment.length - 1 ? 'border-b border-slate-800' : ''}`}>
                     <span className="font-semibold">{eq.item}</span>
                     <span className="text-slate-400">{eq.location}</span>
                   </div>
@@ -457,38 +614,62 @@ export default function FccPublicEntry() {
           </>
         )}
 
+        {/* Access & Hazards */}
         <SectionHeader icon="🚪" title="Access &amp; Hazards" color="text-amber-400" />
         <div className="bg-gray-900 rounded-lg border border-slate-800 p-3 text-xs space-y-1">
-          <p><span className="text-amber-400 font-bold">Door:</span> {household.access.bestDoor}</p>
-          <p><span className="text-amber-400 font-bold">Gate:</span> {household.access.gateCode}</p>
-          <p><span className="text-amber-400 font-bold">Animals:</span> {household.access.dogs}</p>
-          {household.access.hazards && (
+          {householdData.best_door && (
+            <p><span className="text-amber-400 font-bold">Door:</span> {householdData.best_door}</p>
+          )}
+          {householdData.gate_code && (
+            <p><span className="text-amber-400 font-bold">Gate:</span> {householdData.gate_code}</p>
+          )}
+          {householdData.animals && (
+            <p><span className="text-amber-400 font-bold">Animals:</span> {householdData.animals}</p>
+          )}
+          {householdData.hazards && (
             <div className="mt-2 bg-red-900/60 rounded px-2.5 py-1.5 font-semibold text-red-300">
-              ⚠ {household.access.hazards}
+              ⚠ {householdData.hazards}
             </div>
           )}
         </div>
 
-        <SectionHeader icon="❤️" title="Life Needs" color="text-orange-400" />
-        <div className="bg-gray-900 rounded-lg border border-slate-800 p-3">
-          {member.lifeNeeds.map((need: string) => (
-            <p key={need} className="text-xs py-1 flex gap-2">
-              <span className="text-orange-400">•</span> {need}
-            </p>
-          ))}
-        </div>
+        {/* Life Needs */}
+        {clinical.life_needs.length > 0 && (
+          <>
+            <SectionHeader icon="❤️" title="Life Needs" color="text-orange-400" />
+            <div className="bg-gray-900 rounded-lg border border-slate-800 p-3">
+              {clinical.life_needs.map((need) => (
+                <p key={need} className="text-xs py-1 flex gap-2">
+                  <span className="text-orange-400">•</span> {need}
+                </p>
+              ))}
+            </div>
+          </>
+        )}
 
-        <SectionHeader icon="📞" title="Emergency Contacts" color="text-blue-400" />
-        <div className="px-1">
-          {household.emergencyContacts.map((c: FccEmergencyContact, i: number) => (
-            <ContactRow key={c.phone} contact={c} isLast={i === household.emergencyContacts.length - 1} />
-          ))}
-        </div>
+        {/* Emergency Contacts */}
+        {contacts.length > 0 && (
+          <>
+            <SectionHeader icon="📞" title="Emergency Contacts" color="text-blue-400" />
+            <div className="px-1">
+              {contacts.map((c, i) => (
+                <ContactRow key={c.id} contact={c} isLast={i === contacts.length - 1} />
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       <div className="px-4 mt-6 flex gap-2 border-t border-slate-800 pt-3">
         <button
-          onClick={() => { setScreen('access'); setHousehold(null); setCodeInput(''); setError(''); }}
+          onClick={() => {
+            setScreen('access');
+            setHouseholdData(null);
+            setMembers([]);
+            setContacts([]);
+            setCodeInput('');
+            setError('');
+          }}
           className="flex-1 bg-gray-900 rounded-lg px-4 py-2.5 text-xs font-semibold border border-slate-800 active:bg-slate-800 transition-colors text-slate-400"
         >
           Back to Auth
