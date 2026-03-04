@@ -1,0 +1,67 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createAuthMiddlewareClient } from '@/lib/supabase-auth-server';
+
+// PUT /api/fcc/contacts/[contactId] — update contact
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { contactId: string } }
+) {
+  const response = NextResponse.next();
+  const supabase = createAuthMiddlewareClient(request, response);
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+
+  const allowed = ['name', 'relation', 'phone', 'sort_order'];
+  const updates: Record<string, unknown> = {};
+  for (const key of allowed) {
+    if (key in body) updates[key] = body[key];
+  }
+
+  const { data, error } = await supabase
+    .from('fcc_emergency_contacts')
+    .update(updates)
+    .eq('id', params.contactId)
+    .select()
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: 'Failed to update contact' }, { status: 500 });
+  }
+
+  return NextResponse.json({ contact: data });
+}
+
+// DELETE /api/fcc/contacts/[contactId] — remove contact
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { contactId: string } }
+) {
+  const response = NextResponse.next();
+  const supabase = createAuthMiddlewareClient(request, response);
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { error } = await supabase
+    .from('fcc_emergency_contacts')
+    .delete()
+    .eq('id', params.contactId);
+
+  if (error) {
+    return NextResponse.json({ error: 'Failed to delete contact' }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
+}

@@ -5,7 +5,27 @@ import { useRouter } from 'next/navigation';
 import { logEvent } from '@/lib/analytics';
 import { createAuthBrowserClient } from '@/lib/supabase-auth';
 import QRCode from 'qrcode';
-import { MOCK_HOUSEHOLD } from '../data/mock-fcc-household';
+
+interface Household {
+  id: string;
+  name: string;
+  address_line1: string;
+  address_line2?: string;
+  city: string;
+  state: string;
+  zip: string;
+  access_code: string;
+  best_door?: string;
+  gate_code?: string;
+  animals?: string;
+  stair_info?: string;
+  hazards?: string;
+  aed_onsite: boolean;
+  backup_power?: string;
+  member_count: number;
+  fcc_members?: unknown[];
+  fcc_emergency_contacts?: unknown[];
+}
 
 export default function FCCDashboard() {
   const router = useRouter();
@@ -13,16 +33,35 @@ export default function FCCDashboard() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [showPrint, setShowPrint] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-
-  const household = MOCK_HOUSEHOLD;
-  // TODO: Replace with real household ID from Supabase
-  const householdId = household.householdId;
+  const [household, setHousehold] = useState<Household | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [accessLogCount, setAccessLogCount] = useState(0);
 
   useEffect(() => {
     const supabase = createAuthBrowserClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setUserEmail(user.email ?? null);
     });
+  }, []);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [hRes, logRes] = await Promise.all([
+          fetch('/api/fcc/household'),
+          fetch('/api/fcc/access-logs'),
+        ]);
+        const hData = await hRes.json();
+        const logData = await logRes.json();
+        setHousehold(hData.household || null);
+        setAccessLogCount(logData.logs?.length || 0);
+      } catch {
+        // fetch failed
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
   }, []);
 
   const handleLogout = async () => {
@@ -34,17 +73,18 @@ export default function FCCDashboard() {
   };
 
   const generateQR = useCallback(async () => {
+    if (!household) return;
     try {
-      const url = await QRCode.toDataURL(`https://ceg.sfg.ac/fcc/${householdId}`, {
+      const url = await QRCode.toDataURL(`https://ceg.sfg.ac/fcc/${household.id}`, {
         width: 280,
         margin: 2,
         color: { dark: '#000000', light: '#ffffff' },
       });
       setQrDataUrl(url);
     } catch {
-      // QR generation failed silently
+      // QR generation failed
     }
-  }, [householdId]);
+  }, [household]);
 
   useEffect(() => {
     if (showPrint && !qrDataUrl) {
@@ -52,17 +92,87 @@ export default function FCCDashboard() {
     }
   }, [showPrint, qrDataUrl, generateQR]);
 
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-400">Loading...</p>
+        </div>
+      </main>
+    );
+  }
+
+  // ── NO HOUSEHOLD — ONBOARDING ──
+  if (!household) {
+    return (
+      <main className="min-h-screen bg-slate-900 text-white">
+        <header className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-800">
+          <a href="/" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
+          <h1 className="text-lg font-bold flex-1">Field Care Card</h1>
+          {userEmail && (
+            <button onClick={handleLogout} className="text-xs text-slate-400 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 active:bg-slate-700 transition-colors">
+              Sign Out
+            </button>
+          )}
+        </header>
+
+        <div className="px-4 pt-8 pb-8 space-y-5">
+          <div className="text-center">
+            <p className="text-xs font-bold tracking-widest text-amber-500 uppercase font-mono">Get Started</p>
+            <p className="text-xl font-bold mt-2">Create Your Field Care Card</p>
+            <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+              Pre-register your household medical profiles so first responders can access critical information when seconds matter.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 flex gap-3">
+              <span className="text-2xl shrink-0">1</span>
+              <div>
+                <p className="font-bold text-sm">Set up your household</p>
+                <p className="text-xs text-slate-400">Address, access info, hazards</p>
+              </div>
+            </div>
+            <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 flex gap-3">
+              <span className="text-2xl shrink-0">2</span>
+              <div>
+                <p className="font-bold text-sm">Add household members</p>
+                <p className="text-xs text-slate-400">Medical info, medications, equipment</p>
+              </div>
+            </div>
+            <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 flex gap-3">
+              <span className="text-2xl shrink-0">3</span>
+              <div>
+                <p className="font-bold text-sm">Print your QR card</p>
+                <p className="text-xs text-slate-400">Place on fridge, door, or carry in wallet</p>
+              </div>
+            </div>
+          </div>
+
+          <a
+            href="/fcc/edit"
+            className="block w-full bg-amber-600 rounded-xl px-5 py-4 text-center font-bold text-black active:bg-amber-700 transition-colors"
+          >
+            Start Setup
+          </a>
+
+          {userEmail && (
+            <p className="text-[10px] text-slate-500 text-center font-mono">{userEmail}</p>
+          )}
+        </div>
+      </main>
+    );
+  }
+
+  const address = [household.address_line1, household.address_line2].filter(Boolean).join(', ') + `, ${household.city}, ${household.state} ${household.zip}`;
+
   // ── PRINT QR SCREEN ──
   if (showPrint) {
     return (
       <main className="min-h-screen bg-slate-900 text-white">
         <header className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-800 print:hidden">
-          <button
-            onClick={() => setShowPrint(false)}
-            className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg"
-          >
-            ←
-          </button>
+          <button onClick={() => setShowPrint(false)} className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</button>
           <h1 className="text-lg font-bold">Print QR Card</h1>
         </header>
 
@@ -82,25 +192,24 @@ export default function FCCDashboard() {
             </div>
 
             <div className="border-y-2 border-black py-2 mb-3">
-              <p className="text-sm font-bold">Delgado Household</p>
-              <p className="text-[10px] text-gray-600 mt-0.5">{household.address}</p>
-              <p className="text-[10px] text-gray-600">{household.members.length} registered members</p>
+              <p className="text-sm font-bold">{household.name}</p>
+              <p className="text-[10px] text-gray-600 mt-0.5">{address}</p>
+              <p className="text-[10px] text-gray-600">{household.member_count} registered member{household.member_count !== 1 ? 's' : ''}</p>
             </div>
 
             <div className="flex justify-center mb-3">
               {qrDataUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={qrDataUrl} alt="QR Code — scan to access care card" width={140} height={140} className="border-2 border-black rounded-lg" />
+                <img src={qrDataUrl} alt="QR Code" width={140} height={140} className="border-2 border-black rounded-lg" />
               ) : (
                 <div className="w-[140px] h-[140px] bg-gray-100 border-2 border-black rounded-lg flex flex-col items-center justify-center">
-                  <span className="text-3xl mb-1">📱</span>
-                  <span className="text-[8px] font-bold text-gray-600 font-mono">SCAN WITH PHONE</span>
+                  <span className="text-[8px] font-bold text-gray-600 font-mono">GENERATING...</span>
                 </div>
               )}
             </div>
 
             <div className="text-center mb-3">
-              <p className="text-xs font-extrabold text-black font-mono tracking-wide">CEG.SFG.AC/FCC/{householdId}</p>
+              <p className="text-xs font-extrabold text-black font-mono tracking-wide">CEG.SFG.AC/FCC/{household.id.slice(0, 8)}</p>
               <p className="text-[9px] text-gray-600 mt-0.5">Scan QR or visit URL · Enter access code</p>
             </div>
 
@@ -116,10 +225,9 @@ export default function FCCDashboard() {
               </div>
             </div>
 
-            {household.access.hazards && (
+            {household.hazards && (
               <div className="bg-red-50 rounded-lg p-2 border border-red-400 flex items-center gap-2">
-                <span className="text-base">⚠️</span>
-                <p className="text-[10px] font-bold text-red-800">{household.access.hazards}</p>
+                <p className="text-[10px] font-bold text-red-800">{household.hazards}</p>
               </div>
             )}
 
@@ -135,10 +243,7 @@ export default function FCCDashboard() {
             >
               Print Card
             </button>
-            <a
-              href="/fcc/print"
-              className="flex-1 bg-slate-800 rounded-lg px-4 py-3 text-sm font-semibold border border-slate-700 active:bg-slate-700 transition-colors text-center"
-            >
+            <a href="/fcc/print" className="flex-1 bg-slate-800 rounded-lg px-4 py-3 text-sm font-semibold border border-slate-700 active:bg-slate-700 transition-colors text-center">
               More Formats
             </a>
           </div>
@@ -157,18 +262,10 @@ export default function FCCDashboard() {
   return (
     <main className="min-h-screen bg-slate-900 text-white">
       <header className="px-4 pt-4 pb-3 flex items-center gap-3 border-b border-slate-800">
-        <a
-          href="/"
-          className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg"
-        >
-          ←
-        </a>
+        <a href="/" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 active:bg-slate-700 text-lg">←</a>
         <h1 className="text-lg font-bold flex-1">Field Care Card</h1>
         {userEmail && (
-          <button
-            onClick={handleLogout}
-            className="text-xs text-slate-400 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 active:bg-slate-700 transition-colors"
-          >
+          <button onClick={handleLogout} className="text-xs text-slate-400 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 active:bg-slate-700 transition-colors">
             Sign Out
           </button>
         )}
@@ -187,9 +284,9 @@ export default function FCCDashboard() {
         <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
           <div className="flex items-start justify-between">
             <div>
-              <p className="font-bold text-base">Delgado Household</p>
-              <p className="text-xs text-slate-400 mt-0.5">{household.address}</p>
-              <p className="text-xs text-slate-400 mt-0.5">{household.members.length} members registered</p>
+              <p className="font-bold text-base">{household.name}</p>
+              <p className="text-xs text-slate-400 mt-0.5">{address}</p>
+              <p className="text-xs text-slate-400 mt-0.5">{household.member_count} member{household.member_count !== 1 ? 's' : ''} registered</p>
             </div>
             <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-[10px] font-extrabold text-black font-mono shrink-0">
               QR
@@ -228,7 +325,7 @@ export default function FCCDashboard() {
                 : 'bg-gray-900 border border-slate-600 text-sm tracking-wider text-amber-500 font-mono'
             }`}
           >
-            {showCode ? '4 8 2 7' : 'Tap to Reveal Code'}
+            {showCode ? household.access_code.split('').join(' ') : 'Tap to Reveal Code'}
           </button>
         </div>
 
@@ -237,7 +334,11 @@ export default function FCCDashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="font-bold text-sm">Access Log</p>
-              <p className="text-xs text-slate-500 italic mt-0.5">No emergency access events recorded</p>
+              <p className="text-xs text-slate-500 italic mt-0.5">
+                {accessLogCount === 0
+                  ? 'No emergency access events recorded'
+                  : `${accessLogCount} access event${accessLogCount !== 1 ? 's' : ''}`}
+              </p>
             </div>
             <span className="text-slate-500 text-sm">→</span>
           </div>
@@ -245,13 +346,13 @@ export default function FCCDashboard() {
 
         {/* Simulate EMS scan */}
         <a
-          href={`/fcc/${householdId}`}
+          href={`/fcc/${household.id}`}
           onClick={() => logEvent('fcc_simulate_scan')}
           className="block w-full bg-gradient-to-r from-blue-900 to-blue-800 rounded-xl px-5 py-3.5 border border-blue-600 active:from-blue-800 active:to-blue-700 transition-colors text-center"
         >
           <p className="font-bold text-sm tracking-wide">Simulate EMS QR Scan →</p>
         </a>
-        <p className="text-[10px] text-slate-500 text-center -mt-2">Opens CEG.SFG.AC/FCC/{householdId} as crew would see it</p>
+        <p className="text-[10px] text-slate-500 text-center -mt-2">Opens the EMS view as crew would see it</p>
       </div>
     </main>
   );
