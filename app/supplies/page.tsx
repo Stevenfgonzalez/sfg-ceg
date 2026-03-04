@@ -372,11 +372,13 @@ function HouseholdSetup({ onDone }: { onDone: (hh: Household) => void }) {
       {/* Header */}
       <div style={{ background: "#0C1A2E", color: "#fff", padding: "14px 20px" }}>
         <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 7, background: "linear-gradient(135deg, #1A56DB, #3B82F6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>CEG</div>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700 }}>Community Emergency Guide</div>
-            <div style={{ fontSize: 10, color: "#7C8DB0", letterSpacing: 0.8 }}>GO-BAG &amp; EMERGENCY VAULT SETUP</div>
-          </div>
+          <a href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "#fff" }}>
+            <div style={{ width: 32, height: 32, borderRadius: 7, background: "linear-gradient(135deg, #1A56DB, #3B82F6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>CEG</div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>Community Emergency Guide</div>
+              <div style={{ fontSize: 10, color: "#7C8DB0", letterSpacing: 0.8 }}>GO-BAG &amp; EMERGENCY VAULT SETUP</div>
+            </div>
+          </a>
         </div>
       </div>
 
@@ -585,14 +587,14 @@ export default function CEGSuppliesVault() {
       {/* Header */}
       <div style={{ background: "#0C1A2E", color: "#fff", padding: "14px 20px" }}>
         <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <a href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "#fff" }}>
             <div style={{ width: 32, height: 32, borderRadius: 7, background: "linear-gradient(135deg, #1A56DB, #3B82F6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>CEG</div>
             <div>
               <div style={{ fontSize: 14, fontWeight: 700 }}>Community Emergency Guide</div>
               <div style={{ fontSize: 10, color: "#7C8DB0", letterSpacing: 0.8 }}>{household.name} &middot; {household.area}</div>
             </div>
-          </div>
-          <button onClick={() => setHousehold(null)} style={{ background: "transparent", border: `1px solid #334155`, borderRadius: 6, padding: "5px 10px", fontSize: 11, color: "#94A3B8", cursor: "pointer", fontFamily: F, fontWeight: 600 }}>
+          </a>
+          <button onClick={() => setHousehold(null)} style={{ background: "transparent", border: "1px solid #334155", borderRadius: 6, padding: "5px 10px", fontSize: 11, color: "#94A3B8", cursor: "pointer", fontFamily: F, fontWeight: 600 }}>
             Edit Household
           </button>
         </div>

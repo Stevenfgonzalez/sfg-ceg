@@ -209,16 +209,19 @@ function Dashboard() {
       {/* Header */}
       <header className="bg-slate-800 border-b border-slate-700 px-4 py-3">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-bold">CEG Dispatch</h1>
-            <p className="text-xs text-slate-400">
-              {lastRefresh ? `Last refresh: ${lastRefresh}` : 'Loading...'}
-              {totalActive > 0 && (
-                <span className="ml-2 text-amber-400">
-                  {totalActive} active
-                </span>
-              )}
-            </p>
+          <div className="flex items-center gap-3">
+            <a href="/" className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-700 active:bg-slate-600 text-lg">←</a>
+            <div>
+              <h1 className="text-lg font-bold">CEG Dispatch</h1>
+              <p className="text-xs text-slate-400">
+                {lastRefresh ? `Last refresh: ${lastRefresh}` : 'Loading...'}
+                {totalActive > 0 && (
+                  <span className="ml-2 text-amber-400">
+                    {totalActive} active
+                  </span>
+                )}
+              </p>
+            </div>
           </div>
           <div className="flex gap-2">
             <button
