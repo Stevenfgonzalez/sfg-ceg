@@ -283,19 +283,19 @@ export default function FCCMemberEditPage() {
             <div className="space-y-1.5">
               <input
                 type="file"
-                accept="image/jpeg,image/png"
+                accept="image/*"
+                capture="environment"
                 onChange={handlePhotoUpload}
                 className="hidden"
-                id="photo-input"
+                id="camera-input"
                 disabled={photoUploading}
               />
               <input
                 type="file"
                 accept="image/jpeg,image/png"
-                capture="environment"
                 onChange={handlePhotoUpload}
                 className="hidden"
-                id="camera-input"
+                id="photo-input"
                 disabled={photoUploading}
               />
               <label
