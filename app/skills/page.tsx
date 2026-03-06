@@ -273,8 +273,7 @@ function SkillsPage() {
       {/* Footer */}
       <footer className="px-4 pb-8 text-center">
         <p className="text-xs text-slate-500">
-          CEG &middot; Safety For Generations &middot;{' '}
-          <a href="https://sfg.ac" className="underline">sfg.ac</a>
+          CEG &middot; SafetyForGenerations.com
         </p>
       </footer>
     </main>

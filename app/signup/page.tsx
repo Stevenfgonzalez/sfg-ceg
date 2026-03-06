@@ -111,7 +111,7 @@ export default function SignupPage() {
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-3xl mx-auto mb-4 shadow-lg shadow-blue-900/30">
               🏠
             </div>
-            <p className="text-xs font-bold tracking-widest text-amber-500 uppercase font-mono">Safety For Generations</p>
+            <p className="text-xs font-bold tracking-widest text-amber-500 uppercase font-mono">SafetyForGenerations.com</p>
             <h2 className="text-xl font-extrabold mt-2">Create Your CEG Account</h2>
             <p className="text-sm text-slate-400 mt-1">Set up Field Care Cards for your household</p>
           </div>

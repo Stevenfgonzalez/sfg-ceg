@@ -204,7 +204,7 @@ export default function FCCPrintPage() {
       <div className="px-4 py-4">
         {format === 'magnet' && (
           <div className="bg-white text-black rounded-xl p-6 max-w-[4in] mx-auto print:shadow-none print:rounded-none print:max-w-full" style={{ minHeight: '6in' }}>
-            <p className="text-[10px] font-extrabold tracking-widest text-amber-700 uppercase font-mono">Safety For Generations</p>
+            <p className="text-[10px] font-extrabold tracking-widest text-amber-700 uppercase font-mono">SafetyForGenerations.com</p>
             <p className="text-lg font-extrabold text-black mt-0.5">Field Care Card</p>
 
             <div className="border-y-2 border-black py-2 my-3">
@@ -305,7 +305,7 @@ export default function FCCPrintPage() {
         {format === 'binder' && (
           <div className="bg-white text-black rounded-xl p-6 max-w-2xl mx-auto print:shadow-none print:rounded-none print:max-w-full text-[11px] leading-relaxed">
             <div className="border-b-2 border-black pb-3 mb-4">
-              <p className="text-center text-xs font-extrabold tracking-widest uppercase">Safety For Generations — Field Care Card</p>
+              <p className="text-center text-xs font-extrabold tracking-widest uppercase">SafetyForGenerations.com — Field Care Card</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4 mb-4">

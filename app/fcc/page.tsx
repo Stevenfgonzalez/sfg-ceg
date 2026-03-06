@@ -430,7 +430,7 @@ export default function FCCDashboard() {
           <div className="bg-white text-black rounded-xl p-5 max-w-xs mx-auto print:shadow-none print:rounded-none print:max-w-full">
             <div className="flex justify-between items-start mb-3">
               <div>
-                <p className="text-[9px] font-extrabold tracking-widest text-amber-700 uppercase font-mono">Safety For Generations</p>
+                <p className="text-[9px] font-extrabold tracking-widest text-amber-700 uppercase font-mono">SafetyForGenerations.com</p>
                 <p className="text-base font-extrabold text-black mt-0.5">Field Care Card</p>
               </div>
               <p className="text-[9px] font-bold text-red-600 text-right leading-snug font-mono">EMERGENCY<br/>USE ONLY</p>
